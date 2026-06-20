@@ -32,33 +32,62 @@ class HelpScreen extends StatelessWidget {
                   .toList(),
             ),
             _HelpSection(
+              title: 'Physical Button Controls (2-Button Interface)',
+              icon: Icons.touch_app,
+              children: const [
+                ListTile(
+                  leading: Icon(Icons.circle, color: AppTheme.accent),
+                  title: Text('Button 1 (GPIO 13): Mode Button'),
+                  subtitle: Text(
+                    'Press to cycle through Object Detection → OCR → Navigation modes',
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(Icons.circle, color: AppTheme.accent),
+                  title: Text('Button 2 (GPIO 14): Action Button'),
+                  subtitle: Text(
+                    'Press to perform action based on current mode:\n• Object Detection: "What is in front of me?"\n• OCR: Capture and read text\n• Navigation: Navigation assistance',
+                  ),
+                ),
+                SizedBox(height: 8),
+                ListTile(
+                  leading: Icon(Icons.info, color: AppTheme.primary),
+                  title: Text('Quick Feedback:'),
+                  subtitle: Text(
+                    '• Single flash: Mode changed\n• Double click: Action triggered\n• Voice feedback confirms your selection',
+                  ),
+                ),
+              ],
+            ),
+            _HelpSection(
               title: 'ESP32-CAM Setup',
               icon: Icons.memory,
               children: const [
                 _HelpStep(
                   number: 1,
-                  text:
-                      'Install Arduino IDE and ESP32 board support',
+                  text: 'Install Arduino IDE and ESP32 board support',
                 ),
                 _HelpStep(
                   number: 2,
-                  text:
-                      'Open firmware/esp32_cam/VisionWear_Camera.ino',
+                  text: 'Open firmware/esp32_cam/VisionWear_Camera.ino',
                 ),
                 _HelpStep(
                   number: 3,
-                  text:
-                      'Select "AI Thinker ESP32-CAM" board and flash',
+                  text: 'Select "AI Thinker ESP32-CAM" board and flash',
                 ),
                 _HelpStep(
                   number: 4,
                   text:
-                      'Connect to WiFi "VisionWear-CAM" (password: visionwear)',
+                      'Wire buttons: Button 1 to GPIO13, Button 2 to GPIO14 (both to GND)',
                 ),
                 _HelpStep(
                   number: 5,
                   text:
-                      'In the app, set IP to 192.168.4.1 and connect',
+                      'Connect to WiFi "VisionWear-CAM" (password: visionwear)',
+                ),
+                _HelpStep(
+                  number: 6,
+                  text: 'In the app, set IP to 192.168.4.1 and connect',
                 ),
               ],
             ),
@@ -67,20 +96,31 @@ class HelpScreen extends StatelessWidget {
               icon: Icons.psychology,
               children: const [
                 ListTile(
-                  leading: Icon(Icons.center_focus_strong, color: AppTheme.primary),
-                  title: Text('Objects in the center of view are reported as "ahead"'),
+                  leading: Icon(
+                    Icons.center_focus_strong,
+                    color: AppTheme.primary,
+                  ),
+                  title: Text(
+                    'Objects in the center of view are reported as "ahead"',
+                  ),
                 ),
                 ListTile(
                   leading: Icon(Icons.swap_horiz, color: AppTheme.primary),
-                  title: Text('Left and right zones help you navigate around obstacles'),
+                  title: Text(
+                    'Left and right zones help you navigate around obstacles',
+                  ),
                 ),
                 ListTile(
                   leading: Icon(Icons.warning, color: AppTheme.warning),
-                  title: Text('Large nearby objects trigger urgent voice and haptic alerts'),
+                  title: Text(
+                    'Large nearby objects trigger urgent voice and haptic alerts',
+                  ),
                 ),
                 ListTile(
                   leading: Icon(Icons.timer, color: AppTheme.accent),
-                  title: Text('Alerts are spaced to avoid overwhelming you with speech'),
+                  title: Text(
+                    'Alerts are spaced to avoid overwhelming you with speech',
+                  ),
                 ),
               ],
             ),
@@ -98,11 +138,15 @@ class HelpScreen extends StatelessWidget {
                 ),
                 ListTile(
                   leading: Icon(Icons.check, color: AppTheme.accent),
-                  title: Text('Use headphones to hear alerts clearly in noisy areas'),
+                  title: Text(
+                    'Use headphones to hear alerts clearly in noisy areas',
+                  ),
                 ),
                 ListTile(
                   leading: Icon(Icons.check, color: AppTheme.accent),
-                  title: Text('This app assists navigation — always use a cane or guide dog too'),
+                  title: Text(
+                    'This app assists navigation — always use a cane or guide dog too',
+                  ),
                 ),
               ],
             ),

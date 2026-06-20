@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants.dart';
+import '../models/app_mode.dart';
 import '../models/app_settings.dart';
 import '../models/connection_state.dart';
 import '../models/detected_object.dart';
@@ -59,6 +60,7 @@ class VisionProvider extends ChangeNotifier {
   String _statusMessage = 'Ready';
   DateTime? _lastSpeechTime;
   String? _lastAnnouncedText;
+  AppMode _currentMode = AppMode.objectDetection;
 
   AppSettings get settings => _settings;
   CameraConnectionInfo get connection => _connection;
@@ -69,6 +71,7 @@ class VisionProvider extends ChangeNotifier {
   bool get isProcessing => _isProcessing;
   String get statusMessage => _statusMessage;
   bool get isVoiceListening => _voiceCommandService.isListening;
+  AppMode get currentMode => _currentMode;
 
   void updateSettings(AppSettings settings) {
     _settings = settings;
@@ -215,7 +218,54 @@ class VisionProvider extends ChangeNotifier {
         scanObstacles();
       case 'describe_scene':
         describeScene();
+      // New mode-based button events
+      case 'mode_changed':
+        // Mode was changed on ESP32, we'll track it
+        _statusMessage = 'Mode: ${_currentMode.displayName}';
+        _speechService.speak(_currentMode.voiceFeedback, priority: SpeechPriority.high);
+        break;
+      case 'object_detection_request':
+        _handleObjectDetectionAction();
+        break;
+      case 'ocr_request':
+        _handleOcrAction();
+        break;
+      case 'navigation_request':
+        _handleNavigationAction();
+        break;
     }
+    notifyListeners();
+  }
+
+  void _handleObjectDetectionAction() {
+    if (!_isVisionActive) {
+      startVision();
+    }
+    _statusMessage = 'Analyzing objects in front of you';
+    _speechService.speak('What is in front of me?', priority: SpeechPriority.high);
+  }
+
+  void _handleOcrAction() {
+    _statusMessage = 'Capturing and reading text';
+    _speechService.speak('Capturing and reading text', priority: SpeechPriority.high);
+  }
+
+  void _handleNavigationAction() {
+    _statusMessage = 'Navigation mode activated';
+    _speechService.speak('Navigation assistance activated', priority: SpeechPriority.high);
+  }
+
+  void updateModeFromDevice(String modeName) {
+    // Parse the mode name from the device and update local state
+    switch (modeName) {
+      case 'object_detection':
+        _currentMode = AppMode.objectDetection;
+      case 'ocr':
+        _currentMode = AppMode.ocr;
+      case 'navigation':
+        _currentMode = AppMode.navigation;
+    }
+    notifyListeners();
   }
 
   Future<void> _onFrame(Uint8List frame) async {

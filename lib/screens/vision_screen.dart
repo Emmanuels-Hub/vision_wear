@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_theme.dart';
+import '../models/app_mode.dart';
 import '../models/detected_object.dart';
 import '../providers/vision_provider.dart';
 import '../widgets/detection_overlay.dart';
@@ -41,7 +42,19 @@ class _VisionScreenState extends State<VisionScreen> {
       builder: (context, vision, _) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Live Vision'),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Live Vision'),
+                Text(
+                  'Mode: ${vision.currentMode.displayName}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: Colors.white70),
+                ),
+              ],
+            ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.pop(context),
@@ -106,9 +119,7 @@ class _VisionScreenState extends State<VisionScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            vision.isVisionActive
-                                ? 'Scanning...'
-                                : 'Paused',
+                            vision.isVisionActive ? 'Scanning...' : 'Paused',
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 16,
@@ -202,11 +213,7 @@ class _CameraPreview extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (frame != null)
-            Image.memory(
-              frame!,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-            )
+            Image.memory(frame!, fit: BoxFit.cover, gaplessPlayback: true)
           else
             const Center(
               child: Column(
@@ -226,10 +233,7 @@ class _CameraPreview extends StatelessWidget {
               builder: (context, constraints) {
                 return DetectionOverlay(
                   detections: detections,
-                  imageSize: Size(
-                    constraints.maxWidth,
-                    constraints.maxHeight,
-                  ),
+                  imageSize: Size(constraints.maxWidth, constraints.maxHeight),
                 );
               },
             ),

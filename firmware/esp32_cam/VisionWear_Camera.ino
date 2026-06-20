@@ -9,12 +9,16 @@
  *   - HTTP /stream   — MJPEG live stream (port 81)
  *   - HTTP /events   — button press events for the mobile app
  *   - HTTP /status   — device status JSON
- *   - 3 physical push buttons for hands-free control
+ *   - 2 physical push buttons for hands-free control (mode + action)
  *
  * Button wiring (one side to GPIO, other side to GND):
- *   Button 1 (GPIO 14) → Toggle vision on/off
- *   Button 2 (GPIO 12) → Scan obstacles
- *   Button 3 (GPIO 13) → Describe scene
+ *   Button 1 (GPIO 13) → Mode Button (cycles: Object Detection → OCR → Navigation)
+ *   Button 2 (GPIO 14) → Action Button (performs action based on current mode)
+ *
+ * Modes:
+ *   - Object Detection: Ask "What is in front of me?"
+ *   - OCR: Capture and read text
+ *   - Navigation: Future mode for navigation assistance
  *
  * Flash with Arduino IDE:
  *   Board:     "AI Thinker ESP32-CAM"
@@ -46,10 +50,31 @@
 
 // ============ BUTTON PINS ============
 // Connect each button between the GPIO pin and GND (uses internal pull-up).
-#define BTN_VISION_PIN    14   // Button 1: toggle vision
-#define BTN_SCAN_PIN      12   // Button 2: scan obstacles
-#define BTN_DESCRIBE_PIN  13   // Button 3: describe scene
+#define BTN_MODE_PIN      13   // Button 1: cycle through modes
+#define BTN_ACTION_PIN    14   // Button 2: perform mode-specific action
 #define FLASH_LED_PIN      4   // On-board flash LED (active LOW)
+
+// ============ MODE DEFINITIONS ============
+enum AppMode {
+  MODE_OBJECT_DETECTION = 0,
+  MODE_OCR = 1,
+  MODE_NAVIGATION = 2,
+  MODE_COUNT = 3
+};
+
+volatile AppMode currentMode = MODE_OBJECT_DETECTION;
+
+const char* modeNames[] = {
+  "object_detection",
+  "ocr",
+  "navigation"
+};
+
+const char* modeVoiceFeedback[] = {
+  "Object Detection Mode",
+  "OCR Mode",
+  "Navigation Mode"
+};
 
 #define DEBOUNCE_MS      300
 #define MAX_EVENTS         8
@@ -66,6 +91,8 @@ httpd_handle_t camera_httpd = NULL;
 struct ButtonEvent {
   uint32_t id;
   const char* action;
+  const char* mode;
+  const char* voiceFeedback;
   uint32_t timestamp;
 };
 
@@ -76,15 +103,14 @@ portMUX_TYPE eventMux = portMUX_INITIALIZER_UNLOCKED;
 
 struct ButtonConfig {
   uint8_t pin;
-  const char* action;
+  const char* label;
   bool lastStable;
   unsigned long lastDebounce;
 };
 
 ButtonConfig buttons[] = {
-  { BTN_VISION_PIN,  "toggle_vision",   HIGH, 0 },
-  { BTN_SCAN_PIN,    "scan_obstacles",  HIGH, 0 },
-  { BTN_DESCRIBE_PIN,"describe_scene",  HIGH, 0 },
+  { BTN_MODE_PIN,   "mode_button",   HIGH, 0 },
+  { BTN_ACTION_PIN, "action_button", HIGH, 0 },
 };
 
 const size_t BUTTON_COUNT = sizeof(buttons) / sizeof(buttons[0]);
@@ -156,14 +182,16 @@ void flashLed(uint16_t durationMs) {
   digitalWrite(FLASH_LED_PIN, HIGH);
 }
 
-void queueEvent(const char* action) {
+void queueEvent(const char* action, const char* mode, const char* voiceFeedback) {
   portENTER_CRITICAL(&eventMux);
   if (eventCount < MAX_EVENTS) {
     eventQueue[eventCount].id = nextEventId++;
     eventQueue[eventCount].action = action;
+    eventQueue[eventCount].mode = mode;
+    eventQueue[eventCount].voiceFeedback = voiceFeedback;
     eventQueue[eventCount].timestamp = millis();
     eventCount++;
-    Serial.printf("Button event queued: %s (id=%u)\n", action, nextEventId - 1);
+    Serial.printf("Button event queued: %s (mode=%s, id=%u)\n", action, mode, nextEventId - 1);
   }
   portEXIT_CRITICAL(&eventMux);
 }
@@ -180,8 +208,42 @@ void checkButtons() {
 
     if ((now - buttons[i].lastDebounce) > DEBOUNCE_MS) {
       if (reading == LOW && buttons[i].lastStable == HIGH) {
-        queueEvent(buttons[i].action);
-        flashLed(80);
+        // Button pressed
+        if (buttons[i].pin == BTN_MODE_PIN) {
+          // Mode button: cycle to next mode
+          currentMode = (AppMode)((currentMode + 1) % MODE_COUNT);
+          const char* modeName = modeNames[currentMode];
+          const char* modeFeedback = modeVoiceFeedback[currentMode];
+          queueEvent("mode_changed", modeName, modeFeedback);
+          flashLed(100);  // Longer flash for mode change
+          Serial.printf("Mode changed to: %s\n", modeName);
+        } else if (buttons[i].pin == BTN_ACTION_PIN) {
+          // Action button: perform action based on current mode
+          const char* action = NULL;
+          const char* modeName = modeNames[currentMode];
+          const char* feedback = NULL;
+
+          switch (currentMode) {
+            case MODE_OBJECT_DETECTION:
+              action = "object_detection_request";
+              feedback = "Analyzing objects in front of you";
+              break;
+            case MODE_OCR:
+              action = "ocr_request";
+              feedback = "Capturing and reading text";
+              break;
+            case MODE_NAVIGATION:
+              action = "navigation_request";
+              feedback = "Navigation mode";
+              break;
+          }
+
+          if (action) {
+            queueEvent(action, modeName, feedback);
+            flashLed(80);
+            Serial.printf("Action triggered: %s (mode=%s)\n", action, modeName);
+          }
+        }
       }
       buttons[i].lastStable = reading;
     }
@@ -241,16 +303,22 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 }
 
 static esp_err_t status_handler(httpd_req_t *req) {
-  const char* json =
-    "{\"status\":\"ok\",\"device\":\"VisionWear-CAM\",\"version\":\"1.1.0\","
-    "\"buttons\":[\"toggle_vision\",\"scan_obstacles\",\"describe_scene\"]}";
+  char json[512];
+  const char* currentModeName = modeNames[currentMode];
+  
+  int len = snprintf(json, sizeof(json),
+    "{\"status\":\"ok\",\"device\":\"VisionWear-CAM\",\"version\":\"2.0.0\","
+    "\"current_mode\":\"%s\",\"available_modes\":[\"object_detection\",\"ocr\",\"navigation\"],"
+    "\"buttons\":{\"button1\":\"mode_button\",\"button2\":\"action_button\"}}",
+    currentModeName);
+  
   httpd_resp_set_type(req, "application/json");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  return httpd_resp_send(req, json, strlen(json));
+  return httpd_resp_send(req, json, len);
 }
 
 static esp_err_t events_handler(httpd_req_t *req) {
-  char json[512];
+  char json[1024];
   int offset = snprintf(json, sizeof(json), "{\"events\":[");
 
   portENTER_CRITICAL(&eventMux);
@@ -259,8 +327,9 @@ static esp_err_t events_handler(httpd_req_t *req) {
       offset += snprintf(json + offset, sizeof(json) - offset, ",");
     }
     offset += snprintf(json + offset, sizeof(json) - offset,
-      "{\"id\":%u,\"action\":\"%s\",\"timestamp\":%u}",
-      eventQueue[i].id, eventQueue[i].action, eventQueue[i].timestamp);
+      "{\"id\":%u,\"action\":\"%s\",\"mode\":\"%s\",\"voice_feedback\":\"%s\",\"timestamp\":%u}",
+      eventQueue[i].id, eventQueue[i].action, eventQueue[i].mode, 
+      eventQueue[i].voiceFeedback, eventQueue[i].timestamp);
   }
   eventCount = 0;
   portEXIT_CRITICAL(&eventMux);
@@ -280,11 +349,16 @@ static esp_err_t index_handler(httpd_req_t *req) {
     "<h1>Vision Wear ESP32-CAM</h1>"
     "<p>Camera is running. Connect the Vision Wear app.</p>"
     "<p>WiFi: <b>VisionWear-CAM</b> &nbsp; IP: <b>192.168.4.1</b></p>"
-    "<h3>Physical Buttons</h3>"
+    "<h3>Physical Buttons (2-Button Mode Interface)</h3>"
     "<ul style='list-style:none;padding:0'>"
-    "<li>Button 1 (GPIO 14) &mdash; Toggle vision</li>"
-    "<li>Button 2 (GPIO 12) &mdash; Scan obstacles</li>"
-    "<li>Button 3 (GPIO 13) &mdash; Describe scene</li>"
+    "<li><b>Button 1 (GPIO 13)</b> — Mode Button: Cycles through Object Detection → OCR → Navigation</li>"
+    "<li><b>Button 2 (GPIO 14)</b> — Action Button: Performs action based on current mode</li>"
+    "</ul>"
+    "<h3>Available Modes</h3>"
+    "<ul style='list-style:none;padding:0'>"
+    "<li><b>Object Detection:</b> Press Action Button to ask 'What is in front of me?'</li>"
+    "<li><b>OCR:</b> Press Action Button to capture and read text</li>"
+    "<li><b>Navigation:</b> Press Action Button for navigation assistance (future)</li>"
     "</ul>"
     "<p><a href='/capture'>Capture</a> | "
     "<a href='/stream'>Stream</a> | "
@@ -343,7 +417,8 @@ void setup() {
   Serial.printf("IP address: %s\n", IP.toString().c_str());
   Serial.printf("Capture URL: http://%s/capture\n", AP_IP);
   Serial.printf("Events URL:  http://%s/events\n", AP_IP);
-  Serial.println("Buttons: GPIO14=toggle, GPIO12=scan, GPIO13=describe");
+  Serial.println("Buttons: GPIO13=mode_button (cycles modes), GPIO14=action_button");
+  Serial.println("Initial mode: Object Detection");
 
   startCameraServer();
   Serial.println("HTTP server started. Ready for Vision Wear app.");

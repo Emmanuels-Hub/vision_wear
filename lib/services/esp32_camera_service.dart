@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/constants.dart';
 import '../models/app_settings.dart';
+import '../models/app_mode.dart';
 import '../models/connection_state.dart';
 
 class Esp32CameraService {
@@ -220,8 +221,12 @@ class Esp32CameraService {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final events = body['events'] as List<dynamic>? ?? [];
       for (final event in events) {
-        final action = (event as Map<String, dynamic>)['action'] as String?;
+        final eventMap = event as Map<String, dynamic>;
+        final action = eventMap['action'] as String?;
         if (action != null && action.isNotEmpty) {
+          // Parse new format: { action, mode, voice_feedback }
+          // Fallback to old format: { action }
+          final buttonEvent = ButtonEvent.fromJson(eventMap);
           _buttonEventController.add(action);
         }
       }

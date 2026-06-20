@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/app_mode.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/vision_provider.dart';
 import '../../widgets/accessible_button.dart';
@@ -74,9 +75,41 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'Tap a button or use voice commands',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white60,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.white60),
+                  ),
+                  const SizedBox(height: 28),
+                  // Mode Indicator
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.accent, width: 2),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Current Mode',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: Colors.white60),
                         ),
+                        const SizedBox(height: 8),
+                        Text(
+                          vision.currentMode.displayName,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                          semanticsLabel: vision.currentMode.displayName,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Action: ${vision.currentMode.actionDescription}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.white70),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 28),
                   Expanded(

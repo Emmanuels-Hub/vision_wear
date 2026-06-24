@@ -163,104 +163,152 @@
 //     _isReady = false;
 //   }
 // }
-
 import 'dart:typed_data';
 import 'dart:ui';
+
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../core/constants.dart';
 import '../models/detected_object.dart';
 
 class ObjectDetectionService {
+  ObjectDetectionService();
+
   late final YOLO _yolo;
-  bool _isReady = false;
 
-  ObjectDetectionService() {
-    _initialize();
+  bool _initialized = false;
+  bool _loading = false;
+  bool _processing = false;
+
+  bool get isReady => _initialized;
+
+  Future<void> initialize() async {
+    if (_initialized || _loading) {
+      return;
+    }
+
+    _loading = true;
+
+    try {
+      _yolo = YOLO(
+        modelPath: "yolo11n",
+        task: YOLOTask.detect,
+      );
+
+      await _yolo.loadModel();
+
+      _initialized = true;
+
+      print("YOLO model loaded successfully");
+    } catch (e, stackTrace) {
+      print(e);
+      print(stackTrace);
+    } finally {
+      _loading = false;
+    }
   }
-
-  Future<void> _initialize() async {
-    // Load the model locally. The plugin automatically routes to the .tflite on
-    // Android or the .mlpackage on iOS.
-    _yolo = YOLO(modelPath: 'yolo11n', task: YOLOTask.detect);
-    await _yolo.loadModel();
-    _isReady = true;
-  }
-
-  bool get isReady => _isReady;
 
   Future<List<DetectedObject>> detectObjects(
     Uint8List imageBytes, {
     required double minConfidence,
     required bool announceAllObjects,
-    int imageWidth = 640, // Match this to your ESP32 stream resolution!
-    int imageHeight = 480,
+    required int imageWidth,
+    required int imageHeight,
   }) async {
-    if (!_isReady || imageBytes.isEmpty) return [];
+    if (!_initialized) {
+      return [];
+    }
+
+    if (_processing) {
+      return [];
+    }
+
+    if (imageBytes.isEmpty) {
+      return [];
+    }
+
+    _processing = true;
 
     try {
-      // Pass the raw JPEG bytes from the ESP32 straight to the NPU/GPU
-      final results = await _yolo.predict(imageBytes);
+      final prediction = await _yolo.predict(imageBytes);
 
-      return _mapDetections(
-        results,
-        minConfidence: minConfidence,
-        announceAllObjects: announceAllObjects,
-        imageWidth: imageWidth,
-        imageHeight: imageHeight,
+      final List<dynamic> detections =
+          prediction is List
+              ? prediction
+              : prediction["results"] ?? [];
+
+      return _convertDetections(
+        detections,
+        minConfidence,
+        announceAllObjects,
+        imageWidth,
+        imageHeight,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print(e);
+      print(stackTrace);
+
       return [];
+    } finally {
+      _processing = false;
     }
   }
 
-  List<DetectedObject> _mapDetections(
-    List<dynamic> detected, {
-    required double minConfidence,
-    required bool announceAllObjects,
-    required int imageWidth,
-    required int imageHeight,
-  }) {
-    return detected
-        .map((d) {
-          final label = d.className.toLowerCase();
-          final confidence = d.confidence;
+  List<DetectedObject> _convertDetections(
+    List<dynamic> detections,
+    double minConfidence,
+    bool announceAllObjects,
+    int imageWidth,
+    int imageHeight,
+  ) {
+    final List<DetectedObject> objects = [];
 
-          if (confidence < minConfidence) return null;
-          if (!announceAllObjects &&
-              !AppConstants.hazardLabels.contains(label)) {
-            return null; // Skip if we are filtering out non-hazards
-          }
+    for (final detection in detections) {
+      try {
+        final label = detection.className.toString().toLowerCase();
+        final confidence = detection.confidence as double;
 
-          // Ensure the bounding box is normalized (between 0.0 and 1.0)
-          // so your Proximity Math works correctly regardless of camera resolution.
-          final normalizedBox = Rect.fromLTRB(
-            d.left / imageWidth,
-            d.top / imageHeight,
-            d.right / imageWidth,
-            d.bottom / imageHeight,
-          );
+        if (confidence < minConfidence) {
+          continue;
+        }
 
-          return DetectedObject(
+        if (!announceAllObjects &&
+            !AppConstants.hazardLabels.contains(label)) {
+          continue;
+        }
+
+        final rect = Rect.fromLTRB(
+          detection.left / imageWidth,
+          detection.top / imageHeight,
+          detection.right / imageWidth,
+          detection.bottom / imageHeight,
+        );
+
+        objects.add(
+          DetectedObject(
             label: label,
             confidence: confidence,
-            boundingBox: normalizedBox,
-            zone: _determineZone(normalizedBox),
-            proximity: _determineProximity(normalizedBox),
+            boundingBox: rect,
+            zone: _determineZone(rect),
+            proximity: _determineProximity(rect),
             isHazard:
                 AppConstants.hazardLabels.contains(label) ||
-                _isObstacleByPosition(normalizedBox),
-          );
-        })
-        .whereType<DetectedObject>()
-        .toList()
-      ..sort(
-        (a, b) =>
-            _proximityRank(b.proximity).compareTo(_proximityRank(a.proximity)),
-      );
+                _isObstacle(rect),
+          ),
+        );
+      } catch (_) {}
+    }
+
+    objects.sort(
+      (a, b) => _priority(b.proximity).compareTo(
+        _priority(a.proximity),
+      ),
+    );
+
+    return objects;
   }
 
-  int _proximityRank(ProximityLevel level) {
+  int _priority(ProximityLevel level) {
     switch (level) {
       case ProximityLevel.immediate:
         return 4;
@@ -275,32 +323,45 @@ class ObjectDetectionService {
 
   SpatialZone _determineZone(Rect box) {
     final centerX = box.left + box.width / 2;
-    if (centerX < 0.33) return SpatialZone.left;
-    if (centerX > 0.66) return SpatialZone.right;
+
+    if (centerX < 0.33) {
+      return SpatialZone.left;
+    }
+
+    if (centerX > 0.66) {
+      return SpatialZone.right;
+    }
+
     return SpatialZone.center;
   }
 
   ProximityLevel _determineProximity(Rect box) {
     final area = box.width * box.height;
-    final bottomWeight = box
-        .bottom; // Objects closer to the bottom edge of the frame are physically closer to the user
-    final score = (area * 2) + bottomWeight;
 
-    if (score > AppConstants.criticalProximityThreshold)
+    final score = (area * 2) + box.bottom;
+
+    if (score > AppConstants.criticalProximityThreshold) {
       return ProximityLevel.immediate;
-    if (score > AppConstants.obstacleProximityThreshold)
+    }
+
+    if (score > AppConstants.obstacleProximityThreshold) {
       return ProximityLevel.close;
-    if (score > 0.08) return ProximityLevel.approaching;
+    }
+
+    if (score > 0.08) {
+      return ProximityLevel.approaching;
+    }
+
     return ProximityLevel.distant;
   }
 
-  bool _isObstacleByPosition(Rect box) {
-    // If something is massive and at the bottom of the user's feet, flag it as an obstacle regardless of the label
+  bool _isObstacle(Rect box) {
     final area = box.width * box.height;
+
     return box.bottom > 0.55 && area > 0.06;
   }
 
   Future<void> dispose() async {
-    _isReady = false;
+    _initialized = false;
   }
 }

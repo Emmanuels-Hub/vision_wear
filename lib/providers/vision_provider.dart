@@ -83,6 +83,7 @@ class VisionProvider extends ChangeNotifier {
   Future<void> connectCamera() async {
     _statusMessage = 'Connecting...';
     notifyListeners();
+    
     await _cameraService.connect();
     if (_cameraService.connection.isConnected) {
       _statusMessage = 'Camera connected';
@@ -270,18 +271,21 @@ class VisionProvider extends ChangeNotifier {
 
   Future<void> _onFrame(Uint8List frame) async {
     _currentFrame = frame;
+    notifyListeners(); // Update UI with the new frame immediately
+
     if (!_isVisionActive || _isProcessing) {
-      notifyListeners();
       return;
     }
 
     _isProcessing = true;
     try {
       final objects = await _detectionService.detectObjects(
-        frame,
-        minConfidence: _settings.detectionConfidence,
-        announceAllObjects: _settings.announceAllObjects,
-      );
+      frame,
+      minConfidence: _settings.detectionConfidence,
+      announceAllObjects: _settings.announceAllObjects,
+      imageWidth: 640,
+      imageHeight: 480,
+    );
 
       _detections = objects;
       _alerts = _obstacleAnalyzer.analyze(objects);

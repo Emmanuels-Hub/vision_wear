@@ -1,26 +1,40 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/constants.dart';
 import '../models/app_settings.dart';
-import '../models/app_mode.dart';
 import '../models/connection_state.dart';
 
+/// Handles camera connectivity for both the phone camera and the ESP32-CAM.
+///
+/// Phone camera:
+///   Initialises a [CameraController] so the UI can show a [YOLOView] widget
+///   which owns the full live-stream detection pipeline on the native side.
+///   No JPEG capture or YOLO calls happen inside this service for that mode.
+///
+/// ESP32-CAM:
+///   Polls the `/capture` endpoint at [AppSettings.frameIntervalMs] and emits
+///   raw JPEG bytes via [frameStream] so [VisionProvider] can run YOLO on them.
 class Esp32CameraService {
   Esp32CameraService();
 
   CameraController? _phoneController;
   List<CameraDescription>? _cameras;
+
+  // ── ESP32 timers ──────────────────────────────────────────────────────────
   Timer? _pollTimer;
   Timer? _buttonPollTimer;
+
   AppSettings _settings = const AppSettings();
   CameraConnectionInfo _connection = const CameraConnectionInfo();
   Uint8List? _latestFrame;
 
+  // ── Streams ───────────────────────────────────────────────────────────────
+  /// Emits raw JPEG bytes — only used in ESP32 mode for YOLO inference.
   final _frameController = StreamController<Uint8List>.broadcast();
   final _connectionController =
       StreamController<CameraConnectionInfo>.broadcast();
@@ -33,7 +47,13 @@ class Esp32CameraService {
 
   CameraConnectionInfo get connection => _connection;
   Uint8List? get latestFrame => _latestFrame;
+
+  /// The phone [CameraController]. Non-null only when connected in phone mode.
+  /// The UI passes this to [YOLOView] which manages the live preview and
+  /// runs YOLO on every camera frame entirely on the native side.
   CameraController? get phoneController => _phoneController;
+
+  bool get isUsingPhoneCamera => _connection.source == CameraSource.phone;
 
   void updateSettings(AppSettings settings) {
     _settings = settings;
@@ -65,6 +85,10 @@ class Esp32CameraService {
     }
   }
 
+  // ── Phone camera ──────────────────────────────────────────────────────────
+  // We only initialise the CameraController here so the widget layer can
+  // create a YOLOView which owns the actual camera stream and YOLO inference.
+
   Future<void> _connectPhoneCamera() async {
     try {
       _cameras = await availableCameras();
@@ -86,22 +110,17 @@ class Esp32CameraService {
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await _phoneController!.initialize();
 
-      _pollTimer = Timer.periodic(
-        Duration(milliseconds: _settings.frameIntervalMs),
-        (_) => _capturePhoneFrame(),
-      );
-      await _capturePhoneFrame();
-
       _updateConnection(
         status: ConnectionStatus.connected,
         source: CameraSource.phone,
-        message: 'Phone camera active',
+        message: 'Phone camera ready',
       );
+
+      debugPrint('[Camera] Phone camera initialised — YOLOView owns detection');
     } catch (e) {
       _updateConnection(
         status: ConnectionStatus.error,
@@ -111,19 +130,7 @@ class Esp32CameraService {
     }
   }
 
-  Future<void> _capturePhoneFrame() async {
-    if (_phoneController == null || !_phoneController!.value.isInitialized) {
-      return;
-    }
-
-    try {
-      final start = DateTime.now();
-      final file = await _phoneController!.takePicture();
-      final bytes = await file.readAsBytes();
-      final latency = DateTime.now().difference(start).inMilliseconds;
-      _emitFrame(bytes, latencyMs: latency);
-    } catch (_) {}
-  }
+  // ── ESP32 ─────────────────────────────────────────────────────────────────
 
   Future<void> _connectEsp32() async {
     final reachable = await testConnection(
@@ -154,6 +161,7 @@ class Esp32CameraService {
       const Duration(milliseconds: AppConstants.buttonPollIntervalMs),
       (_) => _fetchEsp32ButtonEvents(),
     );
+    // Fire once immediately.
     await _fetchEsp32Frame();
     await _fetchEsp32ButtonEvents();
   }
@@ -180,6 +188,8 @@ class Esp32CameraService {
       stopPolling();
     }
   }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────
 
   void _emitFrame(Uint8List bytes, {int? latencyMs}) {
     _latestFrame = bytes;
@@ -224,9 +234,6 @@ class Esp32CameraService {
         final eventMap = event as Map<String, dynamic>;
         final action = eventMap['action'] as String?;
         if (action != null && action.isNotEmpty) {
-          // Parse new format: { action, mode, voice_feedback }
-          // Fallback to old format: { action }
-          final buttonEvent = ButtonEvent.fromJson(eventMap);
           _buttonEventController.add(action);
         }
       }

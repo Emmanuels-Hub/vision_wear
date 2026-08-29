@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -15,6 +17,7 @@ import 'services/permission_service.dart';
 import 'services/settings_service.dart';
 import 'services/speech_service.dart';
 import 'services/voice_command_service.dart';
+import 'services/ocr_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,9 +33,14 @@ void main() async {
   final speechService = SpeechService();
   final hapticService = HapticService();
   final voiceCommandService = VoiceCommandService();
+  final ocrService = OcrService();
 
   final settings = await settingsService.load();
   speechService.updateSettings(settings);
+
+  // Pre-load the YOLO model at startup so it's ready when the camera opens.
+  // This runs before runApp so the splash screen shows while the model loads.
+  unawaited(detectionService.initialize());
 
   runApp(
     VisionWearApp(
@@ -43,6 +51,7 @@ void main() async {
       speechService: speechService,
       hapticService: hapticService,
       voiceCommandService: voiceCommandService,
+      ocrService: ocrService,
     ),
   );
 }
@@ -57,6 +66,7 @@ class VisionWearApp extends StatelessWidget {
     required this.speechService,
     required this.hapticService,
     required this.voiceCommandService,
+    required this.ocrService,
   });
 
   final SettingsService settingsService;
@@ -66,6 +76,7 @@ class VisionWearApp extends StatelessWidget {
   final SpeechService speechService;
   final HapticService hapticService;
   final VoiceCommandService voiceCommandService;
+  final OcrService ocrService;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +93,7 @@ class VisionWearApp extends StatelessWidget {
             speechService: speechService,
             hapticService: hapticService,
             voiceCommandService: voiceCommandService,
+            ocrService: ocrService,
           ),
         ),
       ],

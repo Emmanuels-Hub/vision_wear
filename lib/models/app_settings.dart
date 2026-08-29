@@ -9,11 +9,14 @@ class AppSettings {
     this.speechVolume = 1.0,
     this.enableHaptics = true,
     this.enableVoiceCommands = true,
-    this.detectionConfidence = 0.55,
+    this.detectionConfidence = 0.70,
     this.frameIntervalMs = 500,
     this.hasCompletedOnboarding = false,
     this.announceAllObjects = false,
     this.languageCode = 'en-US',
+    this.announceOnlyCenter = false,
+    this.announceFrameChanges = true,
+    this.summarizeIntervalMs = 5000,
   });
 
   final String esp32Ip;
@@ -30,6 +33,9 @@ class AppSettings {
   final bool hasCompletedOnboarding;
   final bool announceAllObjects;
   final String languageCode;
+  final bool announceOnlyCenter;
+  final bool announceFrameChanges;
+  final int summarizeIntervalMs;
 
   String get captureUrl => 'http://$esp32Ip$capturePath';
   String get eventsUrl => 'http://$esp32Ip$eventsPath';
@@ -49,6 +55,9 @@ class AppSettings {
     bool? hasCompletedOnboarding,
     bool? announceAllObjects,
     String? languageCode,
+    bool? announceOnlyCenter,
+    bool? announceFrameChanges,
+    int? summarizeIntervalMs,
   }) {
     return AppSettings(
       esp32Ip: esp32Ip ?? this.esp32Ip,
@@ -66,6 +75,9 @@ class AppSettings {
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       announceAllObjects: announceAllObjects ?? this.announceAllObjects,
       languageCode: languageCode ?? this.languageCode,
+      announceOnlyCenter: announceOnlyCenter ?? this.announceOnlyCenter,
+      announceFrameChanges: announceFrameChanges ?? this.announceFrameChanges,
+      summarizeIntervalMs: summarizeIntervalMs ?? this.summarizeIntervalMs,
     );
   }
 }

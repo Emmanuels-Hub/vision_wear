@@ -15,6 +15,47 @@ class AppConstants {
   static const double obstacleProximityThreshold = 0.18;
   static const double criticalProximityThreshold = 0.35;
 
+  /// Minimum normalised bounding-box area (width × height) for a detection
+  /// to be considered valid. Rejects shadow / noise ghosts that produce
+  /// tiny or paper-thin boxes.
+  static const double minDetectionArea = 0.015; // ~1.5 % of the frame
+
+  /// Only these COCO classes are relevant for blind-navigation assistance.
+  /// Everything else (laptop, keyboard, mouse, cup, etc.) is silently dropped
+  /// to avoid false-positive speech noise.
+  static const Set<String> allowedLabels = {
+    // Moving / large — high danger
+    'person',
+    'car',
+    'truck',
+    'bus',
+    'train',
+    'bicycle',
+    'motorcycle',
+    // Animals — unpredictable
+    'dog',
+    'cat',
+    // Street furniture / obstacles
+    'chair',
+    'bench',
+    'fire hydrant',
+    'stop sign',
+    'traffic light',
+    'parking meter',
+    // Indoor obstacles useful for navigation
+    'dining table',
+    'door',
+    'stairs',
+    // Desk items
+    'laptop',
+    'bottle',
+    'cup',
+    'keyboard',
+    'mouse',
+    'cell phone',
+    'book',
+  };
+
   static const List<String> hazardLabels = [
     'person',
     'car',
@@ -25,7 +66,6 @@ class AppConstants {
     'stairs',
     'chair',
     'bench',
-    'pole',
     'fire hydrant',
     'stop sign',
     'traffic light',

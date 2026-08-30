@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.5
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -25,6 +25,7 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
   ultralytics_yolo: ^0.6.5
+  wakelock_plus: ^1.2.5
 
 dev_dependencies:
   flutter_test:

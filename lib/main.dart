@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
+import 'models/app_settings.dart';
 import 'providers/settings_provider.dart';
 import 'providers/vision_provider.dart';
 import 'screens/splash_screen.dart';
@@ -16,34 +20,58 @@ import 'services/settings_service.dart';
 import 'services/speech_service.dart';
 import 'services/voice_command_service.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-  await PermissionService.requestVisionPermissions();
+void main() {
+  // runZonedGuarded plus the Flutter error hooks stop a single unhandled async
+  // error from taking the app down mid-walk, which for this user is a safety
+  // issue rather than a cosmetic one.
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-  final settingsService = SettingsService();
-  final cameraService = Esp32CameraService();
-  final detectionService = ObjectDetectionService();
-  final obstacleAnalyzer = ObstacleAnalyzer();
-  final speechService = SpeechService();
-  final hapticService = HapticService();
-  final voiceCommandService = VoiceCommandService();
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        debugPrint('Flutter error: ${details.exception}');
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        debugPrint('Uncaught platform error: $error');
+        return true;
+      };
 
-  final settings = await settingsService.load();
-  speechService.updateSettings(settings);
+      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  runApp(
-    VisionWearApp(
-      settingsService: settingsService,
-      cameraService: cameraService,
-      detectionService: detectionService,
-      obstacleAnalyzer: obstacleAnalyzer,
-      speechService: speechService,
-      hapticService: hapticService,
-      voiceCommandService: voiceCommandService,
-    ),
+      final settingsService = SettingsService();
+      final settings = await settingsService.load();
+
+      final cameraService = Esp32CameraService();
+      final detectionService = ObjectDetectionService();
+      final obstacleAnalyzer = ObstacleAnalyzer();
+      final speechService = SpeechService();
+      final hapticService = HapticService();
+      final voiceCommandService = VoiceCommandService();
+
+      speechService.updateSettings(settings);
+      cameraService.updateSettings(settings);
+
+      runApp(
+        VisionWearApp(
+          settingsService: settingsService,
+          initialSettings: settings,
+          cameraService: cameraService,
+          detectionService: detectionService,
+          obstacleAnalyzer: obstacleAnalyzer,
+          speechService: speechService,
+          hapticService: hapticService,
+          voiceCommandService: voiceCommandService,
+        ),
+      );
+
+      // Requested after the first frame so the permission dialog appears over
+      // the splash screen instead of a white window.
+      unawaited(PermissionService.requestVisionPermissions());
+    },
+    (error, stack) {
+      debugPrint('Uncaught zone error: $error\n$stack');
+    },
   );
 }
 
@@ -51,6 +79,7 @@ class VisionWearApp extends StatelessWidget {
   const VisionWearApp({
     super.key,
     required this.settingsService,
+    required this.initialSettings,
     required this.cameraService,
     required this.detectionService,
     required this.obstacleAnalyzer,
@@ -60,6 +89,7 @@ class VisionWearApp extends StatelessWidget {
   });
 
   final SettingsService settingsService;
+  final AppSettings initialSettings;
   final Esp32CameraService cameraService;
   final ObjectDetectionService detectionService;
   final ObstacleAnalyzer obstacleAnalyzer;
@@ -75,14 +105,23 @@ class VisionWearApp extends StatelessWidget {
           create: (_) => SettingsProvider(settingsService)..load(),
         ),
         ChangeNotifierProvider(
-          create: (_) => VisionProvider(
-            cameraService: cameraService,
-            detectionService: detectionService,
-            obstacleAnalyzer: obstacleAnalyzer,
-            speechService: speechService,
-            hapticService: hapticService,
-            voiceCommandService: voiceCommandService,
-          ),
+          create: (_) {
+            final provider = VisionProvider(
+              cameraService: cameraService,
+              detectionService: detectionService,
+              obstacleAnalyzer: obstacleAnalyzer,
+              speechService: speechService,
+              hapticService: hapticService,
+              voiceCommandService: voiceCommandService,
+            );
+            provider.updateSettings(initialSettings);
+            // Loading the YOLO model takes a few seconds. Kick it off at
+            // startup so the first frame is not wasted waiting for it — the
+            // old build never called this at all, so detection silently
+            // returned nothing for every frame.
+            unawaited(provider.initializeDetection());
+            return provider;
+          },
         ),
       ],
       child: MaterialApp(

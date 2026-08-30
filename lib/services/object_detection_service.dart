@@ -199,10 +199,10 @@ class ObjectDetectionService {
 
       _initialized = true;
 
-      print("YOLO model loaded successfully");
+      debugPrint("YOLO model loaded successfully");
     } catch (e, stackTrace) {
-      print(e);
-      print(stackTrace);
+      debugPrint("$e");
+      debugPrint("$stackTrace");
     } finally {
       _loading = false;
     }
@@ -245,8 +245,8 @@ class ObjectDetectionService {
         imageHeight,
       );
     } catch (e, stackTrace) {
-      print(e);
-      print(stackTrace);
+      debugPrint("$e");
+      debugPrint("$stackTrace");
 
       return [];
     } finally {

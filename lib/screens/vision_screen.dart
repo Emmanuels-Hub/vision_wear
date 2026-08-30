@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +6,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/constants.dart';
 import '../core/theme/app_theme.dart';
+import '../models/app_mode.dart';
 import '../models/connection_state.dart';
 import '../models/detected_object.dart';
 import '../providers/vision_provider.dart';

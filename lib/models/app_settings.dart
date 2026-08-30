@@ -21,6 +21,8 @@ class AppSettings {
     this.detectionConfidence = 0.55,
     this.frameIntervalMs = AppConstants.frameCaptureIntervalMs,
     this.detectionIntervalMs = 350,
+    this.summarizeIntervalMs = 3000,
+    this.announceFrameChanges = true,
     this.hasCompletedOnboarding = false,
     this.announceAllObjects = false,
     this.languageCode = 'en-US',
@@ -59,6 +61,15 @@ class AppSettings {
   /// this only throttles the expensive YOLO pass so the preview stays smooth.
   final int detectionIntervalMs;
 
+  /// How often the speech scheduler is allowed to summarise the scene. Speech
+  /// is far slower than detection, so this is what actually paces what the
+  /// user hears.
+  final int summarizeIntervalMs;
+
+  /// Announce what entered and left the scene rather than re-reading the whole
+  /// scene each time.
+  final bool announceFrameChanges;
+
   final bool hasCompletedOnboarding;
   final bool announceAllObjects;
   final String languageCode;
@@ -95,6 +106,8 @@ class AppSettings {
     double? detectionConfidence,
     int? frameIntervalMs,
     int? detectionIntervalMs,
+    int? summarizeIntervalMs,
+    bool? announceFrameChanges,
     bool? hasCompletedOnboarding,
     bool? announceAllObjects,
     String? languageCode,
@@ -119,6 +132,8 @@ class AppSettings {
       detectionConfidence: detectionConfidence ?? this.detectionConfidence,
       frameIntervalMs: frameIntervalMs ?? this.frameIntervalMs,
       detectionIntervalMs: detectionIntervalMs ?? this.detectionIntervalMs,
+      summarizeIntervalMs: summarizeIntervalMs ?? this.summarizeIntervalMs,
+      announceFrameChanges: announceFrameChanges ?? this.announceFrameChanges,
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       announceAllObjects: announceAllObjects ?? this.announceAllObjects,
@@ -146,6 +161,8 @@ class AppSettings {
     'detectionConfidence': detectionConfidence,
     'frameIntervalMs': frameIntervalMs,
     'detectionIntervalMs': detectionIntervalMs,
+    'summarizeIntervalMs': summarizeIntervalMs,
+    'announceFrameChanges': announceFrameChanges,
     'hasCompletedOnboarding': hasCompletedOnboarding,
     'announceAllObjects': announceAllObjects,
     'languageCode': languageCode,
@@ -180,6 +197,10 @@ class AppSettings {
           (map['frameIntervalMs'] as num?)?.toInt() ?? defaults.frameIntervalMs,
       detectionIntervalMs: (map['detectionIntervalMs'] as num?)?.toInt() ??
           defaults.detectionIntervalMs,
+      summarizeIntervalMs: (map['summarizeIntervalMs'] as num?)?.toInt() ??
+          defaults.summarizeIntervalMs,
+      announceFrameChanges:
+          map['announceFrameChanges'] as bool? ?? defaults.announceFrameChanges,
       hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ??
           defaults.hasCompletedOnboarding,
       announceAllObjects:

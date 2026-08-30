@@ -124,6 +124,10 @@ class Esp32CameraService {
   }
 
   Future<void> connect() async {
+    // Drop any pending retry so it cannot fire on top of this attempt.
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
     await _teardownTransport();
     _wantConnection = true;
     _reconnectAttempts = 0;
@@ -236,8 +240,11 @@ class Esp32CameraService {
       }
 
       _mjpegParser.reset();
-      _lastFrameAt = null;
       _frameTimestamps.clear();
+      // Seed from connection time, not null. If it were null the watchdog would
+      // skip its check, and a stream that opens but never delivers a frame
+      // would leave the app waiting forever.
+      _lastFrameAt = DateTime.now();
 
       final started = _settings.preferMjpegStream
           ? await _startMjpegStream()

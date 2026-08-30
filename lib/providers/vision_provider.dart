@@ -96,6 +96,7 @@ class VisionProvider extends ChangeNotifier {
   bool _isVisionActive = false;
   bool _isProcessing = false; // Only used in ESP32 mode
   String _statusMessage = 'Ready';
+  String _lastOcrText = '';
   AppMode _currentMode = AppMode.objectDetection;
 
   /// Cached ranked list — used by describeScene() and the UI.
@@ -116,6 +117,8 @@ class VisionProvider extends ChangeNotifier {
   bool get isProcessing => _isProcessing;
   bool get isModelReady => _detectionService.isReady;
   String get statusMessage => _statusMessage;
+  /// Most-recent OCR result (empty when none)
+  String get ocrText => _lastOcrText;
   bool get isVoiceListening => _voiceCommandService.isListening;
   AppMode get currentMode => _currentMode;
 
@@ -598,6 +601,9 @@ class VisionProvider extends ChangeNotifier {
           text = await _ocrService.recognizeText(file.path);
         }
       }
+
+      _lastOcrText = text;
+      notifyListeners();
 
       if (text.trim().isEmpty) {
         _speechService.speak('No text detected.', priority: SpeechPriority.high);

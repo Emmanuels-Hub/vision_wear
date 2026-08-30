@@ -364,6 +364,28 @@ class _PhoneCameraView extends StatelessWidget {
               ),
             ),
           ),
+
+          // ── OCR result overlay ────────────────────────────────────
+          if (vision.ocrText.isNotEmpty)
+            Positioned(
+              bottom: 72,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                constraints: const BoxConstraints(maxHeight: 160),
+                child: SingleChildScrollView(
+                  child: Text(
+                    vision.ocrText,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                ),
+              ),
+            ),
         ] else ...[
           // ── Native live-stream detection widget ───────────────────────────
           YOLOView(

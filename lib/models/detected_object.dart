@@ -12,6 +12,7 @@ class DetectedObject {
     required this.zone,
     required this.proximity,
     required this.isHazard,
+    this.estimatedDistance,
   });
 
   final String label;
@@ -20,6 +21,17 @@ class DetectedObject {
   final SpatialZone zone;
   final ProximityLevel proximity;
   final bool isHazard;
+
+  /// Estimated distance in metres, derived from bounding-box size heuristic.
+  /// `null` when the box is too ambiguous to estimate.
+  final double? estimatedDistance;
+
+  /// Human-readable distance string, e.g. "~1.2 m" or "very close".
+  String get distanceDescription {
+    if (estimatedDistance == null) return '';
+    if (estimatedDistance! < 0.8) return 'very close';
+    return '~${estimatedDistance!.toStringAsFixed(1)} m';
+  }
 
   String get zoneDescription {
     switch (zone) {
@@ -50,12 +62,13 @@ class DetectedObject {
   }
 
   String get announcement {
+    final dist = estimatedDistance != null ? ', $distanceDescription' : '';
     if (isHazard && proximity == ProximityLevel.immediate) {
-      return 'Warning! $label $zoneDescription, very close!';
+      return 'Warning! $label $zoneDescription$dist, very close!';
     }
     if (isHazard) {
-      return '$label $zoneDescription, $proximityDescription';
+      return '$label $zoneDescription$dist, $proximityDescription';
     }
-    return '$label $zoneDescription';
+    return '$label $zoneDescription$dist';
   }
 }

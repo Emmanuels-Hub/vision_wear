@@ -34,10 +34,6 @@ class SpeechService {
   Future<void> _init() async {
     await _tts.awaitSpeakCompletion(true);
     await _applySettings();
-    _tts.setCompletionHandler(() {
-      _isSpeaking = false;
-      _processQueue();
-    });
     _isInitialized = true;
   }
 
@@ -55,39 +51,35 @@ class SpeechService {
   }) async {
     if (!_isInitialized || text.trim().isEmpty) return;
 
-    if (priority == SpeechPriority.critical || force) {
-      await stop();
-      await _speakNow(text);
-      return;
-    }
-
-    if (priority == SpeechPriority.high && _isSpeaking) {
-      await stop();
-    }
-
+    // Never interrupt speech — queue everything.
+    // Critical messages go to the front of the queue by sorting later.
     _queue.add(SpeechRequest(text, priority: priority));
+    
     if (!_isSpeaking) {
-      await _processQueue();
+      _processQueue(); // Fire and forget loop
     }
   }
 
   Future<void> _processQueue() async {
-    if (_isSpeaking || _queue.isEmpty) return;
-
-    final sorted = _queue.toList()
-      ..sort((a, b) => b.priority.index.compareTo(a.priority.index));
-    _queue.clear();
-
-    for (final request in sorted) {
-      await _speakNow(request.text);
-      if (_queue.isNotEmpty) break;
-    }
-  }
-
-  Future<void> _speakNow(String text) async {
+    if (_isSpeaking) return;
     _isSpeaking = true;
-    _lastSpoken = text;
-    await _tts.speak(text);
+
+    while (_queue.isNotEmpty) {
+      final sorted = _queue.toList()
+        ..sort((a, b) => b.priority.index.compareTo(a.priority.index));
+      _queue.clear();
+
+      for (final request in sorted) {
+        _lastSpoken = request.text;
+        await _tts.speak(request.text);
+        
+        // If a new request came in while we were speaking, 
+        // break to re-sort the queue so critical alerts jump ahead.
+        if (_queue.isNotEmpty) break;
+      }
+    }
+
+    _isSpeaking = false;
   }
 
   Future<void> repeatLast() async {

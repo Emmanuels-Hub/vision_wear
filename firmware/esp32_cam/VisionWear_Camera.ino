@@ -865,23 +865,30 @@ static void sendBeacon() {
 
   bool staUp = (WiFi.status() == WL_CONNECTED);
 
-  String payload = "{\"device\":\"VisionWear-CAM\"";
-  payload += ",\"version\":\"" + String(FW_VERSION) + "\"";
-  payload += ",\"ap_ip\":\"" + WiFi.softAPIP().toString() + "\"";
-  payload += ",\"sta_ip\":\"" + (staUp ? WiFi.localIP().toString() : String("")) + "\"";
-  payload += ",\"control_port\":" + String(PORT_CONTROL);
-  payload += ",\"stream_port\":" + String(PORT_STREAM);
-  payload += ",\"events_port\":" + String(PORT_EVENTS);
-  payload += ",\"mode\":\"" + String(modeNames[currentMode]) + "\"";
-  payload += ",\"camera_ready\":" + String(cameraReady ? "true" : "false");
-  payload += ",\"uptime_ms\":" + String((unsigned)millis());
-  payload += "}";
+  // Built into a fixed buffer rather than an Arduino String. This runs every
+  // 1.5 s for the life of the device, and repeated String reallocation is a
+  // reliable way to fragment the ESP32 heap over a long session.
+  static char payload[320];
+  IPAddress apIp = WiFi.softAPIP();
+  String apIpStr  = apIp.toString();
+  String staIpStr = staUp ? WiFi.localIP().toString() : String("");
+
+  int len = snprintf(payload, sizeof(payload),
+    "{\"device\":\"VisionWear-CAM\",\"version\":\"%s\",\"ap_ip\":\"%s\","
+    "\"sta_ip\":\"%s\",\"control_port\":%u,\"stream_port\":%u,"
+    "\"events_port\":%u,\"mode\":\"%s\",\"camera_ready\":%s,\"uptime_ms\":%u}",
+    FW_VERSION, apIpStr.c_str(), staIpStr.c_str(),
+    (unsigned)PORT_CONTROL, (unsigned)PORT_STREAM, (unsigned)PORT_EVENTS,
+    modeNames[currentMode], cameraReady ? "true" : "false",
+    (unsigned)millis());
+
+  if (len <= 0) return;
+  if (len >= (int)sizeof(payload)) len = sizeof(payload) - 1;
 
   // AP subnet broadcast.
-  IPAddress apIp = WiFi.softAPIP();
   IPAddress apBroadcast(apIp[0], apIp[1], apIp[2], 255);
   if (beaconUdp.beginPacket(apBroadcast, PORT_BEACON)) {
-    beaconUdp.write((const uint8_t*)payload.c_str(), payload.length());
+    beaconUdp.write((const uint8_t*)payload, len);
     beaconUdp.endPacket();
   }
 
@@ -896,7 +903,7 @@ static void sendBeacon() {
       (local[2] & mask[2]) | (~mask[2] & 0xFF),
       (local[3] & mask[3]) | (~mask[3] & 0xFF));
     if (beaconUdp.beginPacket(staBroadcast, PORT_BEACON)) {
-      beaconUdp.write((const uint8_t*)payload.c_str(), payload.length());
+      beaconUdp.write((const uint8_t*)payload, len);
       beaconUdp.endPacket();
     }
   }

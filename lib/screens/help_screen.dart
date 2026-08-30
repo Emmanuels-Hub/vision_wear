@@ -39,22 +39,30 @@ class HelpScreen extends StatelessWidget {
                   leading: Icon(Icons.circle, color: AppTheme.accent),
                   title: Text('Button 1 (GPIO 13): Mode Button'),
                   subtitle: Text(
-                    'Press to cycle through Object Detection → OCR → Navigation modes',
+                    'Tap: cycle Object Detection → OCR → Navigation\n'
+                    'Hold: repeat the current mode out loud',
                   ),
                 ),
                 ListTile(
                   leading: Icon(Icons.circle, color: AppTheme.accent),
                   title: Text('Button 2 (GPIO 14): Action Button'),
                   subtitle: Text(
-                    'Press to perform action based on current mode:\n• Object Detection: "What is in front of me?"\n• OCR: Capture and read text\n• Navigation: Navigation assistance',
+                    'Tap: run the action for the current mode\n'
+                    '• Object Detection: describe what is in front of you\n'
+                    '• OCR: capture and read text (coming soon)\n'
+                    '• Navigation: navigation assistance (coming soon)\n'
+                    'Hold: start or stop vision assistance',
                   ),
                 ),
                 SizedBox(height: 8),
                 ListTile(
                   leading: Icon(Icons.info, color: AppTheme.primary),
-                  title: Text('Quick Feedback:'),
+                  title: Text('Quick Feedback'),
                   subtitle: Text(
-                    '• Single flash: Mode changed\n• Double click: Action triggered\n• Voice feedback confirms your selection',
+                    '• Short flash: action triggered\n'
+                    '• Long flash: mode changed\n'
+                    '• Longest flash: button held\n'
+                    'Speech confirms every selection.',
                   ),
                 ),
               ],
@@ -87,7 +95,17 @@ class HelpScreen extends StatelessWidget {
                 ),
                 _HelpStep(
                   number: 6,
-                  text: 'In the app, set IP to 192.168.4.1 and connect',
+                  text:
+                      'Open the app — it finds the camera automatically, no IP '
+                      'address needed',
+                ),
+                _HelpStep(
+                  number: 7,
+                  text:
+                      'Optional: on the Camera Connection screen, send the '
+                      'camera your home WiFi details. It will join that '
+                      'network so your phone keeps its internet connection '
+                      'while still seeing the camera.',
                 ),
               ],
             ),

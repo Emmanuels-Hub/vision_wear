@@ -1,0 +1,10 @@
+# Copy to android/key.properties and fill in, then keep it out of version control.
+# Generate the keystore with:
+#   keytool -genkey -v -keystore upload-keystore.jks -storetype JKS \
+#           -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+#
+# storeFile is resolved relative to the android/app directory.
+storePassword=
+keyPassword=
+keyAlias=upload
+storeFile=../upload-keystore.jks

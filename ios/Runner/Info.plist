@@ -14,6 +14,22 @@
 	<string>Vision Wear uses the microphone for voice commands to control the app hands-free.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Vision Wear uses speech recognition to understand your voice commands.</string>
+	<!-- iOS 14+ blocks local network access, including the UDP discovery
+	     beacon and HTTP requests to the camera, until the user grants this. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Vision Wear needs local network access to find and stream video from your ESP32-CAM eyewear on the same WiFi network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+	<!-- The camera serves plain HTTP on a private LAN address, so App
+	     Transport Security has to allow local networking. This exception is
+	     scoped to local addresses and does not relax ATS for the internet. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -59,11 +75,11 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- The app locks itself to portrait at runtime; declaring the same here
+	     avoids a rotation flash on launch. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>

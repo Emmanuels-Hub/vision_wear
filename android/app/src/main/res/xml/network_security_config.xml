@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The ESP32-CAM serves plain HTTP on a private LAN address that changes with
+  the network, so cleartext cannot be restricted to a fixed domain list here
+  (Android's network security config matches hostnames, not CIDR ranges).
+
+  Cleartext is therefore permitted, but user-added and debug CAs are excluded
+  so that any HTTPS traffic the app makes still chains to the system trust
+  store and cannot be intercepted by a user-installed certificate.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

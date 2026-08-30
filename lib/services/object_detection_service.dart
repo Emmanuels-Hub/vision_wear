@@ -60,15 +60,15 @@ class ObjectDetectionService {
       final prediction = await yolo.predict(imageBytes);
 
       // The plugin has returned a bare list in some versions and a keyed map in
-      // others, so accept either shape.
+      // others. Go through `dynamic` so this keeps compiling and working across
+      // either shape rather than breaking on a plugin upgrade.
+      final dynamic raw = prediction;
       List<dynamic> detections = const [];
-      if (prediction is List) {
-        detections = prediction;
-      } else {
-        final raw = prediction['boxes'] ??
-            prediction['results'] ??
-            prediction['detections'];
-        if (raw is List) detections = raw;
+      if (raw is List) {
+        detections = raw;
+      } else if (raw is Map) {
+        final boxes = raw['boxes'] ?? raw['results'] ?? raw['detections'];
+        if (boxes is List) detections = boxes;
       }
 
       return _convertDetections(

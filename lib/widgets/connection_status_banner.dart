@@ -11,9 +11,11 @@ class ConnectionStatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (color, icon, text) = _statusInfo();
+    final detail = _detail();
 
     return Semantics(
       label: 'Connection status: $text',
+      liveRegion: true,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -24,7 +26,14 @@ class ConnectionStatusBanner extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, color: color, size: 22),
+            if (connection.isBusy)
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              )
+            else
+              Icon(icon, color: color, size: 22),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -38,9 +47,9 @@ class ConnectionStatusBanner extends StatelessWidget {
                       fontSize: 15,
                     ),
                   ),
-                  if (connection.isConnected && connection.latencyMs != null)
+                  if (detail != null)
                     Text(
-                      '${connection.framesReceived} frames · ${connection.latencyMs}ms',
+                      detail,
                       style: TextStyle(
                         color: color.withValues(alpha: 0.8),
                         fontSize: 12,
@@ -55,6 +64,26 @@ class ConnectionStatusBanner extends StatelessWidget {
     );
   }
 
+  String? _detail() {
+    if (!connection.isConnected) {
+      return connection.deviceIp;
+    }
+
+    final parts = <String>[];
+    if (connection.deviceIp != null) parts.add(connection.deviceIp!);
+    if (connection.fps > 0) {
+      parts.add('${connection.fps.toStringAsFixed(0)} fps');
+    }
+    if (connection.transport == FrameTransport.mjpegStream) {
+      parts.add('stream');
+    } else if (connection.transport == FrameTransport.pollCapture) {
+      parts.add('polling');
+    }
+    if (connection.latencyMs != null) parts.add('${connection.latencyMs}ms');
+
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   (Color, IconData, String) _statusInfo() {
     switch (connection.status) {
       case ConnectionStatus.connected:
@@ -62,8 +91,18 @@ class ConnectionStatusBanner extends StatelessWidget {
             ? 'ESP32-CAM'
             : 'Phone camera';
         return (AppTheme.accent, Icons.wifi, 'Connected · $source');
+      case ConnectionStatus.discovering:
+        return (AppTheme.warning, Icons.search, 'Finding camera...');
       case ConnectionStatus.connecting:
         return (AppTheme.warning, Icons.sync, 'Connecting...');
+      case ConnectionStatus.reconnecting:
+        return (
+          AppTheme.warning,
+          Icons.wifi_tethering,
+          connection.reconnectAttempts > 0
+              ? 'Reconnecting (attempt ${connection.reconnectAttempts})'
+              : 'Reconnecting...',
+        );
       case ConnectionStatus.error:
         return (AppTheme.danger, Icons.wifi_off, connection.message);
       case ConnectionStatus.disconnected:

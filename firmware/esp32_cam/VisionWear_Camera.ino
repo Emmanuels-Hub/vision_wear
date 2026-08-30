@@ -13,10 +13,12 @@
  *   - Three separate HTTP server instances. esp_http_server processes requests
  *     one at a time per instance, so a blocking MJPEG stream or a long-polled
  *     event request used to starve every other endpoint.
- *   - Sockets: LRU purge enabled + larger socket pool + recv/send timeouts.
- *     The old config ran out of sockets after a few minutes of one-shot HTTP
- *     requests and simply stopped accepting connections. That is the
- *     "ESP32 disconnects" symptom.
+ *   - Sockets: LRU purge enabled, keep-alive on, recv/send timeouts set, and a
+ *     client budget split across the three servers that fits inside
+ *     CONFIG_LWIP_MAX_SOCKETS (see the note above startServers). The old config
+ *     ran out of sockets after a few minutes of one-shot HTTP requests and
+ *     simply stopped accepting connections. That is the "ESP32 disconnects"
+ *     symptom.
  *   - /events supports long-poll (?wait=ms) so a button press reaches the phone
  *     in ~10 ms instead of up to one poll interval.
  *   - UDP discovery beacon so the app finds the board automatically on any
@@ -435,8 +437,16 @@ void checkButtons() {
 
 static esp_err_t capture_handler(httpd_req_t* req) {
   if (!cameraReady) {
-    httpd_resp_send_err(req, HTTPD_503_SERVICE_UNAVAILABLE, "camera not ready");
-    return ESP_FAIL;
+    // httpd_err_code_t has no 503 entry, so set the status line directly
+    // rather than using httpd_resp_send_err(). 503 is the honest answer here:
+    // the board is up, the sensor is not, and the app should keep retrying.
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, "application/json");
+    setCorsHeaders(req);
+    const char* body = "{\"error\":\"camera not ready\"}";
+    // Return ESP_OK: the response was sent successfully, and returning
+    // ESP_FAIL would make httpd tear down an otherwise healthy connection.
+    return httpd_resp_send(req, body, strlen(body));
   }
 
   int64_t start = esp_timer_get_time();
@@ -776,8 +786,21 @@ static void registerUri(httpd_handle_t server, const char* uri,
   httpd_register_uri_handler(server, &def);
 }
 
+// Socket budget. CONFIG_LWIP_MAX_SOCKETS is 16 on this core, and every socket
+// below is drawn from that one pool:
+//
+//   3 listening sockets (one per server instance)
+//   3 control sockets   (esp_http_server opens a UDP ctrl socket per instance)
+//   1 UDP beacon socket
+//   7 client sockets    (4 control + 2 stream + 2 events, below)
+//   = 15 of 16
+//
+// Exceeding the pool is what made the old single-server build stop accepting
+// connections, so the client counts are deliberately small. lru_purge_enable
+// is on for all three, so going over degrades by recycling the oldest
+// connection instead of refusing the new one.
 void startServers() {
-  httpd_config_t controlCfg = baseConfig(PORT_CONTROL, 7, 8192);
+  httpd_config_t controlCfg = baseConfig(PORT_CONTROL, 4, 8192);
   if (httpd_start(&control_httpd, &controlCfg) == ESP_OK) {
     registerUri(control_httpd, "/",           index_handler);
     registerUri(control_httpd, "/capture",    capture_handler);
@@ -793,7 +816,7 @@ void startServers() {
 
   // The stream handler blocks for the lifetime of the client, so this instance
   // only needs a couple of sockets but a roomier stack.
-  httpd_config_t streamCfg = baseConfig(PORT_STREAM, 3, 8192);
+  httpd_config_t streamCfg = baseConfig(PORT_STREAM, 2, 8192);
   if (httpd_start(&stream_httpd, &streamCfg) == ESP_OK) {
     registerUri(stream_httpd, "/stream", stream_handler);
     Serial.printf("Stream server on port %u\n", PORT_STREAM);
@@ -801,7 +824,7 @@ void startServers() {
     Serial.println("ERROR: stream server failed to start");
   }
 
-  httpd_config_t eventsCfg = baseConfig(PORT_EVENTS, 4, 6144);
+  httpd_config_t eventsCfg = baseConfig(PORT_EVENTS, 2, 6144);
   if (httpd_start(&events_httpd, &eventsCfg) == ESP_OK) {
     registerUri(events_httpd, "/events", events_handler);
     Serial.printf("Events server on port %u\n", PORT_EVENTS);

@@ -10,7 +10,7 @@ class ConnectionStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (color, icon, text) = _statusInfo();
+    final (color, icon, text) = _statusInfo(context);
     final detail = _detail();
 
     return Semantics(
@@ -84,29 +84,29 @@ class ConnectionStatusBanner extends StatelessWidget {
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
-  (Color, IconData, String) _statusInfo() {
+  (Color, IconData, String) _statusInfo(BuildContext context) {
     switch (connection.status) {
       case ConnectionStatus.connected:
         final source = connection.source == CameraSource.esp32
             ? 'ESP32-CAM'
             : 'Phone camera';
-        return (AppTheme.accent, Icons.wifi, 'Connected · $source');
+        return (context.appColors.accent, Icons.wifi, 'Connected · $source');
       case ConnectionStatus.discovering:
-        return (AppTheme.warning, Icons.search, 'Finding camera...');
+        return (context.appColors.warning, Icons.search, 'Finding camera...');
       case ConnectionStatus.connecting:
-        return (AppTheme.warning, Icons.sync, 'Connecting...');
+        return (context.appColors.warning, Icons.sync, 'Connecting...');
       case ConnectionStatus.reconnecting:
         return (
-          AppTheme.warning,
+          context.appColors.warning,
           Icons.wifi_tethering,
           connection.reconnectAttempts > 0
               ? 'Reconnecting (attempt ${connection.reconnectAttempts})'
               : 'Reconnecting...',
         );
       case ConnectionStatus.error:
-        return (AppTheme.danger, Icons.wifi_off, connection.message);
+        return (context.appColors.danger, Icons.wifi_off, connection.message);
       case ConnectionStatus.disconnected:
-        return (Colors.grey, Icons.link_off, 'Not connected');
+        return (context.appColors.muted, Icons.link_off, 'Not connected');
     }
   }
 }

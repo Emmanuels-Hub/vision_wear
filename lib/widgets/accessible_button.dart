@@ -24,7 +24,14 @@ class AccessibleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttonColor = color ?? (isPrimary ? AppTheme.primary : AppTheme.cardDark);
+    final buttonColor =
+        color ?? (isPrimary ? context.colors.primary : context.colors.surfaceContainerHighest);
+    // Pick the foreground from the actual button fill so the label stays
+    // legible in both themes and against a caller-supplied colour.
+    final foreground =
+        ThemeData.estimateBrightnessForColor(buttonColor) == Brightness.dark
+            ? Colors.white
+            : Colors.black87;
 
     return Semantics(
       button: true,
@@ -42,7 +49,7 @@ class AccessibleButton extends StatelessWidget {
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 32, color: Colors.white),
+                  Icon(icon, size: 32, color: foreground),
                   const SizedBox(width: 16),
                 ],
                 Expanded(
@@ -51,10 +58,10 @@ class AccessibleButton extends StatelessWidget {
                     children: [
                       Text(
                         label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          color: foreground,
                         ),
                       ),
                       if (subtitle != null) ...[
@@ -63,14 +70,14 @@ class AccessibleButton extends StatelessWidget {
                           subtitle!,
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.white.withValues(alpha: 0.75),
+                            color: foreground.withValues(alpha: 0.75),
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right, color: Colors.white70),
+                Icon(Icons.chevron_right, color: foreground.withValues(alpha: 0.7)),
               ],
             ),
           ),

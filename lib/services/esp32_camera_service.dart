@@ -85,6 +85,11 @@ class Esp32CameraService {
   Uint8List? get latestFrame => _latestFrame;
   CameraController? get phoneController => _phoneController;
 
+  /// True when frames come from the phone's own camera rather than the ESP32.
+  /// The UI branches on this to decide between the native YOLOView widget and
+  /// the ESP32 frame pipeline.
+  bool get isUsingPhoneCamera => _settings.usePhoneCamera;
+
   void updateSettings(AppSettings settings) {
     final needsRestart =
         _wantConnection &&

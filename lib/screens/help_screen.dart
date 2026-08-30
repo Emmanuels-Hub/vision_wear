@@ -20,9 +20,9 @@ class HelpScreen extends StatelessWidget {
               children: AppConstants.voiceCommands
                   .map(
                     (cmd) => ListTile(
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.format_quote,
-                        color: AppTheme.accent,
+                        color: context.appColors.accent,
                         size: 20,
                       ),
                       title: Text('"$cmd"'),
@@ -34,9 +34,9 @@ class HelpScreen extends StatelessWidget {
             _HelpSection(
               title: 'Physical Button Controls (2-Button Interface)',
               icon: Icons.touch_app,
-              children: const [
+              children: [
                 ListTile(
-                  leading: Icon(Icons.circle, color: AppTheme.accent),
+                  leading: Icon(Icons.circle, color: context.appColors.accent),
                   title: Text('Button 1 (GPIO 13): Mode Button'),
                   subtitle: Text(
                     'Tap: cycle Object Detection → OCR → Navigation\n'
@@ -44,7 +44,7 @@ class HelpScreen extends StatelessWidget {
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.circle, color: AppTheme.accent),
+                  leading: Icon(Icons.circle, color: context.appColors.accent),
                   title: Text('Button 2 (GPIO 14): Action Button'),
                   subtitle: Text(
                     'Tap: run the action for the current mode\n'
@@ -56,7 +56,7 @@ class HelpScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 ListTile(
-                  leading: Icon(Icons.info, color: AppTheme.primary),
+                  leading: Icon(Icons.info, color: context.colors.primary),
                   title: Text('Quick Feedback'),
                   subtitle: Text(
                     '• Short flash: action triggered\n'
@@ -70,7 +70,7 @@ class HelpScreen extends StatelessWidget {
             _HelpSection(
               title: 'ESP32-CAM Setup',
               icon: Icons.memory,
-              children: const [
+              children: [
                 _HelpStep(
                   number: 1,
                   text: 'Install Arduino IDE and ESP32 board support',
@@ -112,30 +112,30 @@ class HelpScreen extends StatelessWidget {
             _HelpSection(
               title: 'How Detection Works',
               icon: Icons.psychology,
-              children: const [
+              children: [
                 ListTile(
                   leading: Icon(
                     Icons.center_focus_strong,
-                    color: AppTheme.primary,
+                    color: context.colors.primary,
                   ),
                   title: Text(
                     'Objects in the center of view are reported as "ahead"',
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.swap_horiz, color: AppTheme.primary),
+                  leading: Icon(Icons.swap_horiz, color: context.colors.primary),
                   title: Text(
                     'Left and right zones help you navigate around obstacles',
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.warning, color: AppTheme.warning),
+                  leading: Icon(Icons.warning, color: context.appColors.warning),
                   title: Text(
                     'Large nearby objects trigger urgent voice and haptic alerts',
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.timer, color: AppTheme.accent),
+                  leading: Icon(Icons.timer, color: context.appColors.accent),
                   title: Text(
                     'Alerts are spaced to avoid overwhelming you with speech',
                   ),
@@ -145,23 +145,23 @@ class HelpScreen extends StatelessWidget {
             _HelpSection(
               title: 'Tips for Best Results',
               icon: Icons.tips_and_updates,
-              children: const [
+              children: [
                 ListTile(
-                  leading: Icon(Icons.check, color: AppTheme.accent),
+                  leading: Icon(Icons.check, color: context.appColors.accent),
                   title: Text('Mount the camera at chest or forehead height'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.check, color: AppTheme.accent),
+                  leading: Icon(Icons.check, color: context.appColors.accent),
                   title: Text('Ensure good lighting for accurate detection'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.check, color: AppTheme.accent),
+                  leading: Icon(Icons.check, color: context.appColors.accent),
                   title: Text(
                     'Use headphones to hear alerts clearly in noisy areas',
                   ),
                 ),
                 ListTile(
-                  leading: Icon(Icons.check, color: AppTheme.accent),
+                  leading: Icon(Icons.check, color: context.appColors.accent),
                   title: Text(
                     'This app assists navigation — always use a cane or guide dog too',
                   ),
@@ -197,7 +197,7 @@ class _HelpSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: AppTheme.accent),
+                Icon(icon, color: context.appColors.accent),
                 const SizedBox(width: 8),
                 Text(title, style: Theme.of(context).textTheme.titleMedium),
               ],
@@ -222,7 +222,7 @@ class _HelpStep extends StatelessWidget {
     return ListTile(
       leading: CircleAvatar(
         radius: 14,
-        backgroundColor: AppTheme.primary,
+        backgroundColor: context.colors.primary,
         child: Text('$number', style: const TextStyle(fontSize: 12)),
       ),
       title: Text(text),

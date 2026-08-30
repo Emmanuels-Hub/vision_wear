@@ -14,6 +14,7 @@ import 'screens/splash_screen.dart';
 import 'services/esp32_camera_service.dart';
 import 'services/haptic_service.dart';
 import 'services/object_detection_service.dart';
+import 'services/ocr_service.dart';
 import 'services/obstacle_analyzer.dart';
 import 'services/permission_service.dart';
 import 'services/settings_service.dart';
@@ -48,6 +49,7 @@ void main() {
       final speechService = SpeechService();
       final hapticService = HapticService();
       final voiceCommandService = VoiceCommandService();
+      final ocrService = OcrService();
 
       speechService.updateSettings(settings);
       cameraService.updateSettings(settings);
@@ -62,6 +64,7 @@ void main() {
           speechService: speechService,
           hapticService: hapticService,
           voiceCommandService: voiceCommandService,
+          ocrService: ocrService,
         ),
       );
 
@@ -86,6 +89,7 @@ class VisionWearApp extends StatelessWidget {
     required this.speechService,
     required this.hapticService,
     required this.voiceCommandService,
+    required this.ocrService,
   });
 
   final SettingsService settingsService;
@@ -96,6 +100,7 @@ class VisionWearApp extends StatelessWidget {
   final SpeechService speechService;
   final HapticService hapticService;
   final VoiceCommandService voiceCommandService;
+  final OcrService ocrService;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +118,7 @@ class VisionWearApp extends StatelessWidget {
               speechService: speechService,
               hapticService: hapticService,
               voiceCommandService: voiceCommandService,
+              ocrService: ocrService,
             );
             provider.updateSettings(initialSettings);
             // Loading the YOLO model takes a few seconds. Kick it off at
@@ -124,11 +130,20 @@ class VisionWearApp extends StatelessWidget {
           },
         ),
       ],
-      child: MaterialApp(
-        title: AppConstants.appName,
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: const SplashScreen(),
+      // Watches only themeMode, so changing an unrelated setting does not
+      // rebuild the whole app.
+      child: Selector<SettingsProvider, ThemeMode>(
+        selector: (_, settings) => settings.themeMode,
+        builder: (context, themeMode, _) {
+          return MaterialApp(
+            title: AppConstants.appName,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeMode,
+            home: const SplashScreen(),
+          );
+        },
       ),
     );
   }

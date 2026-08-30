@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../core/constants.dart';
 
 class AppSettings {
@@ -25,7 +27,9 @@ class AppSettings {
     this.announceFrameChanges = true,
     this.hasCompletedOnboarding = false,
     this.announceAllObjects = false,
+    this.announceOnlyCenter = false,
     this.languageCode = 'en-US',
+    this.themeMode = ThemeMode.system,
   });
 
   final String esp32Ip;
@@ -72,7 +76,16 @@ class AppSettings {
 
   final bool hasCompletedOnboarding;
   final bool announceAllObjects;
+
+  /// Restrict announcements to objects in the centre third of the frame, i.e.
+  /// what is actually in the user's path.
+  final bool announceOnlyCenter;
+
   final String languageCode;
+
+  /// Light / dark / follow the OS. Defaults to system so the app matches
+  /// whatever the user has already configured for accessibility.
+  final ThemeMode themeMode;
 
   String get baseUrl => 'http://$esp32Ip:$controlPort';
   String get captureUrl => 'http://$esp32Ip:$controlPort$capturePath';
@@ -110,7 +123,9 @@ class AppSettings {
     bool? announceFrameChanges,
     bool? hasCompletedOnboarding,
     bool? announceAllObjects,
+    bool? announceOnlyCenter,
     String? languageCode,
+    ThemeMode? themeMode,
   }) {
     return AppSettings(
       esp32Ip: esp32Ip ?? this.esp32Ip,
@@ -137,7 +152,9 @@ class AppSettings {
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       announceAllObjects: announceAllObjects ?? this.announceAllObjects,
+      announceOnlyCenter: announceOnlyCenter ?? this.announceOnlyCenter,
       languageCode: languageCode ?? this.languageCode,
+      themeMode: themeMode ?? this.themeMode,
     );
   }
 
@@ -165,7 +182,9 @@ class AppSettings {
     'announceFrameChanges': announceFrameChanges,
     'hasCompletedOnboarding': hasCompletedOnboarding,
     'announceAllObjects': announceAllObjects,
+    'announceOnlyCenter': announceOnlyCenter,
     'languageCode': languageCode,
+    'themeMode': themeMode.name,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> map) {
@@ -205,7 +224,13 @@ class AppSettings {
           defaults.hasCompletedOnboarding,
       announceAllObjects:
           map['announceAllObjects'] as bool? ?? defaults.announceAllObjects,
+      announceOnlyCenter:
+          map['announceOnlyCenter'] as bool? ?? defaults.announceOnlyCenter,
       languageCode: map['languageCode'] as String? ?? defaults.languageCode,
+      themeMode: ThemeMode.values.firstWhere(
+        (m) => m.name == map['themeMode'],
+        orElse: () => defaults.themeMode,
+      ),
     );
   }
 }

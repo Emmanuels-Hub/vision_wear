@@ -60,7 +60,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: error ? AppTheme.danger : AppTheme.primary,
+        backgroundColor: error ? context.appColors.danger : context.colors.primary,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -169,7 +169,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     title: const Text('Use phone camera instead'),
                     subtitle: const Text('For testing without ESP32 hardware'),
                     value: _usePhoneCamera,
-                    activeThumbColor: AppTheme.accent,
+                    activeThumbColor: context.appColors.accent,
                     onChanged: (v) => setState(() => _usePhoneCamera = v),
                   ),
 
@@ -181,7 +181,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         'Listens for the device instead of using a fixed IP',
                       ),
                       value: _autoDiscover,
-                      activeThumbColor: AppTheme.accent,
+                      activeThumbColor: context.appColors.accent,
                       onChanged: (v) => setState(() => _autoDiscover = v),
                     ),
                     const SizedBox(height: 8),
@@ -224,7 +224,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     icon: const Icon(Icons.wifi_find),
                     label: const Text('Test Connection'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.cardDark,
+                      backgroundColor: context.colors.surfaceContainerHighest,
                       minimumSize: const Size(double.infinity, 56),
                     ),
                   ),
@@ -232,18 +232,18 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   ElevatedButton.icon(
                     onPressed: _busy ? null : _saveAndConnect,
                     icon: _busy
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: context.colors.onPrimary,
                             ),
                           )
                         : const Icon(Icons.link),
                     label: const Text('Save & Connect'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: context.colors.primary,
                       minimumSize: const Size(double.infinity, 56),
                     ),
                   ),
@@ -254,7 +254,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                       icon: const Icon(Icons.link_off),
                       label: const Text('Disconnect'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.danger,
+                        foregroundColor: context.appColors.danger,
                         minimumSize: const Size(double.infinity, 56),
                       ),
                     ),
@@ -298,7 +298,7 @@ class _DeviceCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.memory, color: AppTheme.accent),
+                Icon(Icons.memory, color: context.appColors.accent),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -313,24 +313,25 @@ class _DeviceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            _row('Mode', status.parsedMode?.displayName ?? status.currentMode),
-            _row('Camera', status.cameraReady ? 'Ready' : 'Not ready'),
-            _row('Access point', status.apIp.isEmpty ? '—' : status.apIp),
+            _row(context, 'Mode', status.parsedMode?.displayName ?? status.currentMode),
+            _row(context, 'Camera', status.cameraReady ? 'Ready' : 'Not ready'),
+            _row(context, 'Access point', status.apIp.isEmpty ? '—' : status.apIp),
             _row(
+              context,
               'Home network',
               status.staConnected
                   ? '${status.staSsid} · ${status.staIp}'
                   : 'Not joined',
             ),
             if (status.uptimeMs > 0)
-              _row('Uptime', '${(status.uptimeMs / 60000).floor()} min'),
+              _row(context, 'Uptime', '${(status.uptimeMs / 60000).floor()} min'),
           ],
         ),
       ),
     );
   }
 
-  Widget _row(String label, String value) {
+  Widget _row(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -340,7 +341,7 @@ class _DeviceCard extends StatelessWidget {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
+              style: TextStyle(color: context.appColors.muted, fontSize: 13),
             ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
@@ -389,7 +390,7 @@ class _ShareWifiCardState extends State<_ShareWifiCard> {
           children: [
             Row(
               children: [
-                const Icon(Icons.wifi_password, color: AppTheme.accent),
+                Icon(Icons.wifi_password, color: context.appColors.accent),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -408,7 +409,7 @@ class _ShareWifiCardState extends State<_ShareWifiCard> {
                         'network name and password and it will join that '
                         'network instead, so your phone keeps internet while '
                         'still seeing the camera.',
-              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              style: TextStyle(color: context.appColors.muted, fontSize: 13),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -443,7 +444,7 @@ class _ShareWifiCardState extends State<_ShareWifiCard> {
               'Sent directly to the camera over its own WiFi and stored only on '
               'the device.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.45),
+                color: context.appColors.muted,
                 fontSize: 11,
               ),
             ),
@@ -453,7 +454,7 @@ class _ShareWifiCardState extends State<_ShareWifiCard> {
               icon: const Icon(Icons.send),
               label: const Text('Send to camera'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
+                backgroundColor: context.colors.primary,
                 minimumSize: const Size(double.infinity, 52),
               ),
             ),
@@ -486,7 +487,7 @@ class _SetupGuide extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.info_outline, color: AppTheme.accent),
+                Icon(Icons.info_outline, color: context.appColors.accent),
                 const SizedBox(width: 8),
                 Text(
                   'Quick Setup',
@@ -503,7 +504,7 @@ class _SetupGuide extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 12,
-                      backgroundColor: AppTheme.primary,
+                      backgroundColor: context.colors.primary,
                       child: Text(
                         '${e.key + 1}',
                         style: const TextStyle(fontSize: 12),

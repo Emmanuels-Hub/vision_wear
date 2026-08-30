@@ -11,9 +11,9 @@ class ObstacleAlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (alert.severity) {
-      AlertSeverity.critical => AppTheme.danger,
-      AlertSeverity.warning => AppTheme.warning,
-      AlertSeverity.info => AppTheme.accent,
+      AlertSeverity.critical => context.appColors.danger,
+      AlertSeverity.warning => context.appColors.warning,
+      AlertSeverity.info => context.appColors.accent,
     };
 
     final icon = switch (alert.severity) {

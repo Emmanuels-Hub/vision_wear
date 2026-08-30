@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../models/app_settings.dart';
 import '../services/settings_service.dart';
@@ -61,5 +61,15 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> setFrameInterval(int ms) async {
     await update(_settings.copyWith(frameIntervalMs: ms));
+  }
+
+  ThemeMode get themeMode => _settings.themeMode;
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    await update(_settings.copyWith(themeMode: mode));
+  }
+
+  Future<void> setAnnounceOnlyCenter(bool value) async {
+    await update(_settings.copyWith(announceOnlyCenter: value));
   }
 }

@@ -64,8 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(
                     vision.isVoiceListening ? Icons.mic : Icons.mic_none,
                     color: vision.isVoiceListening
-                        ? AppTheme.accent
-                        : Colors.white70,
+                        ? context.appColors.accent
+                        : context.appColors.muted,
                   ),
                   onPressed: settings.settings.enableVoiceCommands
                       ? vision.toggleVoiceListening
@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Tap a button or use voice commands',
                     style: Theme.of(
                       context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.white60),
+                    ).textTheme.bodyMedium?.copyWith(color: context.appColors.muted),
                   ),
                   const SizedBox(height: 28),
                   // Mode indicator. Tapping cycles the mode and pushes it to
@@ -110,9 +110,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppTheme.accent.withValues(alpha: 0.2),
+                          color: context.appColors.accent.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.accent, width: 2),
+                          border: Border.all(color: context.appColors.accent, width: 2),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,13 +125,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .labelSmall
-                                        ?.copyWith(color: Colors.white60),
+                                        ?.copyWith(color: context.appColors.muted),
                                   ),
                                 ),
-                                const Icon(
+                                Icon(
                                   Icons.swap_horiz,
                                   size: 18,
-                                  color: Colors.white60,
+                                  color: context.appColors.muted,
                                 ),
                               ],
                             ),
@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               'Action: ${vision.currentMode.actionDescription}',
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: Colors.white70),
+                                  ?.copyWith(color: context.appColors.muted),
                             ),
                           ],
                         ),
@@ -189,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: 'Scan Obstacles',
                           subtitle: 'Check for hazards on your path',
                           icon: Icons.warning_amber,
-                          color: AppTheme.warning.withValues(alpha: 0.3),
+                          color: context.appColors.warning.withValues(alpha: 0.3),
                           onPressed: vision.scanObstacles,
                         ),
                         const SizedBox(height: 12),

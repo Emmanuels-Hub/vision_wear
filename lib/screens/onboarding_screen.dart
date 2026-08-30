@@ -89,8 +89,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   height: 8,
                   decoration: BoxDecoration(
                     color: _currentPage == i
-                        ? AppTheme.primary
-                        : Colors.white24,
+                        ? context.colors.primary
+                        : context.colors.onSurface.withValues(alpha: 0.24),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -111,7 +111,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
+                  backgroundColor: context.colors.primary,
                   minimumSize: const Size(double.infinity, 60),
                 ),
                 child: Text(
@@ -151,10 +151,10 @@ class _OnboardPage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.15),
+              color: context.colors.primary.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 64, color: AppTheme.primary),
+            child: Icon(icon, size: 64, color: context.colors.primary),
           ),
           const SizedBox(height: 40),
           Text(
@@ -167,7 +167,7 @@ class _OnboardPage extends StatelessWidget {
             description,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.white70,
+                  color: context.appColors.muted,
                   height: 1.6,
                 ),
           ),

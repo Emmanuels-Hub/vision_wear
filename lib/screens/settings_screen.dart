@@ -20,6 +20,12 @@ class SettingsScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
+                _SectionHeader(title: 'Appearance'),
+                _ThemeModeTile(
+                  value: settings.themeMode,
+                  onChanged: settingsProvider.setThemeMode,
+                ),
+                const SizedBox(height: 8),
                 _SectionHeader(title: 'Speech'),
                 _SliderTile(
                   label: 'Speech rate',
@@ -67,7 +73,7 @@ class SettingsScreen extends StatelessWidget {
                     'Off: only hazards and nearby obstacles',
                   ),
                   value: settings.announceAllObjects,
-                  activeThumbColor: AppTheme.accent,
+                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setAnnounceAllObjects(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -79,7 +85,7 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Haptic feedback'),
                   subtitle: const Text('Vibrate on critical obstacles'),
                   value: settings.enableHaptics,
-                  activeThumbColor: AppTheme.accent,
+                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setEnableHaptics(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -89,7 +95,7 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Voice commands'),
                   subtitle: const Text('Control app with your voice'),
                   value: settings.enableVoiceCommands,
-                  activeThumbColor: AppTheme.accent,
+                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setEnableVoiceCommands(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -101,7 +107,7 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Use phone camera'),
                   subtitle: const Text('Fallback when ESP32 is unavailable'),
                   value: settings.usePhoneCamera,
-                  activeThumbColor: AppTheme.accent,
+                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setUsePhoneCamera(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -136,6 +142,64 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+/// Light / dark / system selector.
+///
+/// A segmented control rather than a dropdown, so every option is its own
+/// large, permanently-visible tap target instead of being hidden behind an
+/// extra interaction.
+class _ThemeModeTile extends StatelessWidget {
+  const _ThemeModeTile({required this.value, required this.onChanged});
+
+  final ThemeMode value;
+  final ValueChanged<ThemeMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const options = <(ThemeMode, String, IconData)>[
+      (ThemeMode.system, 'System', Icons.brightness_auto),
+      (ThemeMode.light, 'Light', Icons.light_mode),
+      (ThemeMode.dark, 'Dark', Icons.dark_mode),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Theme', style: context.texts.bodyLarge),
+          const SizedBox(height: 4),
+          Text(
+            "System follows your phone's light or dark setting.",
+            style: context.texts.bodySmall?.copyWith(
+              color: context.appColors.muted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<ThemeMode>(
+            segments: [
+              for (final (mode, label, icon) in options)
+                ButtonSegment<ThemeMode>(
+                  value: mode,
+                  label: Text(label),
+                  icon: Icon(icon),
+                  tooltip: '$label theme',
+                ),
+            ],
+            selected: {value},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => onChanged(selection.first),
+            style: ButtonStyle(
+              // The global 64px ElevatedButton height is too tall here, but
+              // each segment still clears the 48dp accessibility minimum.
+              minimumSize: WidgetStateProperty.all(const Size(0, 52)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
 
@@ -148,7 +212,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: AppTheme.accent,
+              color: context.appColors.accent,
             ),
       ),
     );
@@ -186,7 +250,7 @@ class _SliderTile extends StatelessWidget {
             Text(
               displayValue,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
+                color: context.appColors.muted,
               ),
             ),
           ],
@@ -196,7 +260,7 @@ class _SliderTile extends StatelessWidget {
           min: min,
           max: max,
           divisions: divisions,
-          activeColor: AppTheme.primary,
+          activeColor: context.colors.primary,
           onChanged: onChanged,
         ),
       ],

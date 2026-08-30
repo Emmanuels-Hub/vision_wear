@@ -18,16 +18,35 @@ class DetectionOverlay extends StatelessWidget {
     // Use SizedBox.expand so the CustomPaint fills the parent Stack cell.
     return SizedBox.expand(
       child: CustomPaint(
-        painter: _DetectionPainter(detections: detections),
+        painter: _DetectionPainter(
+          detections: detections,
+          immediateColor: context.appColors.danger,
+          hazardColor: context.appColors.warning,
+          neutralColor: context.appColors.accent,
+          labelTextColor: context.appColors.onOverlay,
+        ),
       ),
     );
   }
 }
 
 class _DetectionPainter extends CustomPainter {
-  _DetectionPainter({required this.detections});
+  _DetectionPainter({
+    required this.detections,
+    required this.immediateColor,
+    required this.hazardColor,
+    required this.neutralColor,
+    required this.labelTextColor,
+  });
 
   final List<DetectedObject> detections;
+
+  // Resolved from the active theme by the enclosing widget, because a
+  // CustomPainter has no BuildContext of its own.
+  final Color immediateColor;
+  final Color hazardColor;
+  final Color neutralColor;
+  final Color labelTextColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -45,11 +64,11 @@ class _DetectionPainter extends CustomPainter {
       // Colour coding: red = immediate hazard, orange = close hazard, teal = other.
       final Color boxColor;
       if (obj.isHazard && obj.proximity == ProximityLevel.immediate) {
-        boxColor = AppTheme.danger;
+        boxColor = immediateColor;
       } else if (obj.isHazard) {
-        boxColor = AppTheme.warning;
+        boxColor = hazardColor;
       } else {
-        boxColor = AppTheme.accent;
+        boxColor = neutralColor;
       }
 
       // ── Corner-bracket style bounding box ─────────────────────────────────
@@ -81,8 +100,8 @@ class _DetectionPainter extends CustomPainter {
       final textPainter = TextPainter(
         text: TextSpan(
           text: labelText,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: labelTextColor,
             fontSize: 11.5,
             fontWeight: FontWeight.w700,
             letterSpacing: 0.3,
@@ -140,5 +159,10 @@ class _DetectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DetectionPainter old) =>
-      old.detections != detections;
+      old.detections != detections ||
+      // Repaint on a theme switch, not only when the detections change.
+      old.immediateColor != immediateColor ||
+      old.hazardColor != hazardColor ||
+      old.neutralColor != neutralColor ||
+      old.labelTextColor != labelTextColor;
 }

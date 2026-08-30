@@ -59,6 +59,45 @@ class AppConstants {
   static const int frameWidth = 640;
   static const int frameHeight = 480;
 
+  /// Minimum share of the frame a detection must occupy to be taken seriously.
+  /// Rejects shadow/noise ghosts that come back as tiny or paper-thin boxes.
+  static const double minDetectionArea = 0.015; // ~1.5 % of the frame
+
+  /// Only these COCO classes are relevant for blind-navigation assistance.
+  /// Everything else is silently dropped to avoid false-positive speech noise.
+  static const Set<String> allowedLabels = {
+    // Moving / large — high danger
+    'person',
+    'car',
+    'truck',
+    'bus',
+    'train',
+    'bicycle',
+    'motorcycle',
+    // Animals — unpredictable
+    'dog',
+    'cat',
+    // Street furniture / obstacles
+    'chair',
+    'bench',
+    'fire hydrant',
+    'stop sign',
+    'traffic light',
+    'parking meter',
+    // Indoor obstacles useful for navigation
+    'dining table',
+    'door',
+    'stairs',
+    // Desk items
+    'laptop',
+    'bottle',
+    'cup',
+    'keyboard',
+    'mouse',
+    'cell phone',
+    'book',
+  };
+
   static const List<String> hazardLabels = [
     'person',
     'car',

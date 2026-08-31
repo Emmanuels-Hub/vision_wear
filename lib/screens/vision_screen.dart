@@ -86,7 +86,7 @@ class _VisionScreenState extends State<VisionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Live Vision'),
+                const Text('Live Visioning'),
                 Text(
                   'Mode: ${vision.currentMode.displayName}',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(

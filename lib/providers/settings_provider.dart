@@ -43,6 +43,19 @@ class SettingsProvider extends ChangeNotifier {
     await update(_settings.copyWith(speechRate: rate));
   }
 
+  Future<void> setSpeechPitch(double pitch) async {
+    await update(_settings.copyWith(speechPitch: pitch));
+  }
+
+  /// Empty [name] restores the automatic "best available voice" behaviour.
+  Future<void> setVoice(String name, String locale) async {
+    await update(_settings.copyWith(voiceName: name, voiceLocale: locale));
+  }
+
+  Future<void> setSummarizeInterval(int ms) async {
+    await update(_settings.copyWith(summarizeIntervalMs: ms));
+  }
+
   Future<void> setDetectionConfidence(double value) async {
     await update(_settings.copyWith(detectionConfidence: value));
   }

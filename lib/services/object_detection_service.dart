@@ -17,7 +17,6 @@ class ObjectDetectionService {
   String? _lastError;
 
   bool get isReady => _initialized;
-  bool get isLoading => _loading;
 
   /// Null unless model loading failed, in which case it carries the reason so
   /// the UI can say something more useful than "0 objects detected".
@@ -28,16 +27,28 @@ class ObjectDetectionService {
 
     _loading = true;
     try {
-      final yolo = YOLO(modelPath: 'yolo11n', task: YOLOTask.detect);
-      await yolo.loadModel();
-      _yolo = yolo;
-      _initialized = true;
-      _lastError = null;
-      debugPrint('YOLO model loaded successfully');
-    } catch (e, stackTrace) {
-      _lastError = e.toString();
-      debugPrint('YOLO model failed to load: $e');
-      debugPrint('$stackTrace');
+      // Try the bundled model first so the ESP32 path and the phone's YOLOView
+      // run the same weights. These used to name different models, which meant
+      // the two cameras could disagree about what was in front of the user.
+      // Fall back to the plugin's built-in model if the asset cannot be
+      // resolved on this platform, rather than leaving detection dead.
+      for (final path in const [
+        AppConstants.yoloModelPath,
+        AppConstants.yoloFallbackModel,
+      ]) {
+        try {
+          final yolo = YOLO(modelPath: path, task: YOLOTask.detect);
+          await yolo.loadModel();
+          _yolo = yolo;
+          _initialized = true;
+          _lastError = null;
+          debugPrint("YOLO model loaded from $path");
+          return;
+        } catch (e) {
+          _lastError = e.toString();
+          debugPrint("YOLO model $path failed to load: $e");
+        }
+      }
     } finally {
       _loading = false;
     }

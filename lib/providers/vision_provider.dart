@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../core/constants.dart';
@@ -16,14 +19,16 @@ import '../services/haptic_service.dart';
 import '../services/object_detection_service.dart';
 import '../services/object_tracker.dart';
 import '../services/obstacle_analyzer.dart';
+import '../services/ocr_service.dart';
 import '../services/priority_engine.dart';
 import '../services/scene_understanding.dart';
 import '../services/speech_scheduler.dart';
 import '../services/speech_service.dart';
 import '../services/voice_command_service.dart';
-import '../services/ocr_service.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+
+/// What the OCR pipeline is currently doing. The UI shows this directly, so a
+/// blind user's sighted helper can see why nothing is being read out.
+enum OcrStage { idle, capturing, recognising, done, failed }
 
 class VisionProvider extends ChangeNotifier {
   VisionProvider({
@@ -41,7 +46,6 @@ class VisionProvider extends ChangeNotifier {
         _hapticService = hapticService,
         _voiceCommandService = voiceCommandService,
         _ocrService = ocrService {
-    // Initialise pipeline stages.
     _scheduler = SpeechScheduler(speechService: _speechService);
 
     _connectionSub = _cameraService.connectionStream.listen((info) {
@@ -64,23 +68,24 @@ class VisionProvider extends ChangeNotifier {
   final VoiceCommandService _voiceCommandService;
   final OcrService _ocrService;
 
-  // ── Pipeline stages (created in constructor body) ──────────────────────────
+  // ── Pipeline stages ────────────────────────────────────────────────────────
 
-  /// Stage 1 is YOLO — runs inside [YOLOView] or [ObjectDetectionService].
+  /// Stage 1 is YOLO — inside [YOLOView] (phone) or [ObjectDetectionService]
+  /// (ESP32).
 
-  /// Stage 2: assigns stable IDs to objects across frames.
+  /// Stage 2: stable IDs across frames.
   final ObjectTracker _tracker = ObjectTracker();
 
-  /// Stage 3: scores and sorts tracked objects by danger level.
+  /// Stage 3: score and sort by danger.
   final PriorityEngine _priorityEngine = PriorityEngine();
 
-  /// Stage 4: converts ranked objects into human-readable phrases.
+  /// Stage 4: ranked objects into a spoken phrase.
   final SceneUnderstanding _sceneUnderstanding = SceneUnderstanding();
 
-  /// Stage 5: smart cooldown gate before reaching TTS.
+  /// Stage 5: decides whether the user actually hears it.
   late final SpeechScheduler _scheduler;
 
-  // ── Stream subscriptions ───────────────────────────────────────────────────
+  // ── Subscriptions ──────────────────────────────────────────────────────────
 
   late StreamSubscription<CameraConnectionInfo> _connectionSub;
   late StreamSubscription<Uint8List> _frameSub;
@@ -92,19 +97,27 @@ class VisionProvider extends ChangeNotifier {
   CameraConnectionInfo _connection = const CameraConnectionInfo();
   List<DetectedObject> _detections = [];
   List<ObstacleAlert> _alerts = [];
-  Uint8List? _currentFrame; // Only populated in ESP32 mode
+  Uint8List? _currentFrame; // ESP32 only
   bool _isVisionActive = false;
-  bool _isProcessing = false; // Only used in ESP32 mode
+  bool _isProcessing = false; // ESP32 only
   String _statusMessage = 'Ready';
-  String _lastOcrText = '';
   AppMode _currentMode = AppMode.objectDetection;
 
-  /// Cached ranked list — used by describeScene() and the UI.
+  /// Set when YOLOView fails to load its model, so the vision screen can say
+  /// what went wrong instead of showing an empty camera feed forever.
+  String? _detectionError;
+
+  // OCR state.
+  String _ocrText = '';
+  OcrStage _ocrStage = OcrStage.idle;
+  String _ocrMessage = '';
+
+  /// Cached ranked list for describeScene() and the UI.
   List<ScoredObject> _lastRanked = [];
 
   /// Throttle for notifyListeners() to avoid 30–60 rebuilds/second.
   DateTime? _lastUIUpdate;
-  static const int _uiUpdateMinGapMs = 100; // max ~10 rebuilds/s
+  static const int _uiUpdateMinGapMs = 100; // ≈10 rebuilds/s
 
   // ── Getters ────────────────────────────────────────────────────────────────
 
@@ -115,34 +128,52 @@ class VisionProvider extends ChangeNotifier {
   Uint8List? get currentFrame => _currentFrame;
   bool get isVisionActive => _isVisionActive;
   bool get isProcessing => _isProcessing;
-  bool get isModelReady => _detectionService.isReady;
+  bool get isModelReady => isUsingPhoneCamera || _detectionService.isReady;
   String get statusMessage => _statusMessage;
-  /// Most-recent OCR result (empty when none)
-  String get ocrText => _lastOcrText;
+  String? get detectionError => _detectionError;
   bool get isVoiceListening => _voiceCommandService.isListening;
   AppMode get currentMode => _currentMode;
 
-  /// Exposes the phone [CameraController] so the UI can pass it to [YOLOView].
+  /// Most recent OCR result, empty when there is none.
+  String get ocrText => _ocrText;
+  OcrStage get ocrStage => _ocrStage;
+  String get ocrMessage => _ocrMessage;
+  bool get isReadingText =>
+      _ocrStage == OcrStage.capturing || _ocrStage == OcrStage.recognising;
+
+  /// The still-capture controller, non-null only in OCR mode on the phone.
   CameraController? get phoneController => _cameraService.phoneController;
 
-  /// True when using the phone camera (vs ESP32-CAM).
   bool get isUsingPhoneCamera => _cameraService.isUsingPhoneCamera;
+
+  /// True when the native [YOLOView] should be mounted. It owns the camera, so
+  /// nothing else may hold it while this is true.
+  bool get shouldMountYoloView =>
+      isUsingPhoneCamera && _currentMode == AppMode.objectDetection;
+
+  /// Available TTS voices, for the settings screen.
+  List<SpeechVoice> get availableVoices => _speechService.availableVoices;
+
+  /// Speaks a sample line in [voice] so the user can choose one by ear.
+  Future<void> previewVoice(SpeechVoice voice) =>
+      _speechService.previewVoice(voice);
 
   // ── Settings ───────────────────────────────────────────────────────────────
 
   void updateSettings(AppSettings settings) {
     _settings = settings;
     _cameraService.updateSettings(settings);
-    _speechService.updateSettings(settings);
+    unawaited(_speechService.updateSettings(settings));
     notifyListeners();
   }
 
-  /// Warms up the detection model at app start.
+  /// Warms up the ESP32 inference path at app start.
   ///
-  /// [startVision] also loads it on demand, but doing it here means the user
-  /// does not sit through a multi-second model load the first time they press
-  /// the action button.
+  /// Skipped entirely when the phone camera is selected: [YOLOView] loads and
+  /// owns its own model natively, and loading a second copy here just burns
+  /// memory on a device that is already running a camera and a neural net.
   Future<void> initializeDetection() async {
+    if (isUsingPhoneCamera) return;
     if (_detectionService.isReady) return;
     await _detectionService.initialize();
     notifyListeners();
@@ -157,16 +188,20 @@ class VisionProvider extends ChangeNotifier {
     await _cameraService.connect();
     if (_cameraService.connection.isConnected) {
       _statusMessage = 'Camera connected';
-      await _speechService.speak('Camera connected');
       await _hapticService.success();
     } else {
       _statusMessage = _cameraService.connection.message;
+      await _speechService.speak(
+        'Camera not connected',
+        priority: SpeechPriority.high,
+      );
     }
     notifyListeners();
   }
 
   Future<void> disconnectCamera() async {
     await stopVision();
+    await _cameraService.closeStillCamera();
     await _cameraService.disconnect();
     _currentFrame = null;
     _detections = [];
@@ -175,32 +210,10 @@ class VisionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reads the device's own view of itself: firmware version, camera health,
-  /// and whether it has joined a normal WiFi network in addition to serving
-  /// its own access point.
   Future<DeviceStatus?> fetchDeviceStatus() => _cameraService.fetchStatus();
 
-  /// Hands the board credentials for a normal WiFi network so the phone can
-  /// stay on a network that has internet while still reaching the camera.
   Future<bool> provisionDeviceWifi(String ssid, String password) =>
       _cameraService.provisionDeviceWifi(ssid, password);
-
-  /// Cycles the mode from the phone and pushes it to the device, so the
-  /// on-screen control and the physical mode button stay in agreement.
-  Future<void> cycleMode() async {
-    _currentMode =
-        AppMode.values[(_currentMode.index + 1) % AppMode.values.length];
-    _statusMessage = 'Mode: ${_currentMode.displayName}';
-    notifyListeners();
-
-    await _speechService.speak(
-      _currentMode.voiceFeedback,
-      priority: SpeechPriority.high,
-    );
-    // Best effort: if the device is unreachable, the next /events response
-    // resynchronises us anyway.
-    await _cameraService.setDeviceMode(_currentMode);
-  }
 
   Future<void> testConnection(String ip, String path) async {
     _statusMessage = 'Testing connection...';
@@ -208,52 +221,142 @@ class VisionProvider extends ChangeNotifier {
 
     final success = await _cameraService.testConnection(ip, path);
     _statusMessage = success ? 'Connection successful' : 'Connection failed';
-    if (success) {
-      await _speechService.speak('Connection successful');
-      await _hapticService.success();
-    } else {
-      await _speechService.speak('Could not connect to camera');
-    }
+    await _speechService.speak(
+      success ? 'Connected' : 'Could not connect',
+      priority: SpeechPriority.high,
+    );
+    if (success) await _hapticService.success();
     notifyListeners();
+  }
+
+  // ── Mode switching ─────────────────────────────────────────────────────────
+
+  /// Switches between the two modes and hands the camera over.
+  ///
+  /// On the phone, object detection is served by the native [YOLOView] and OCR
+  /// by a [CameraController]; only one may hold the sensor. The order here
+  /// matters: notify first so the widget tree unmounts the outgoing consumer,
+  /// wait for that frame to be rendered, and only then open the incoming one.
+  /// Opening before the teardown lands is exactly what produced the black
+  /// preview and the "camera in use" errors.
+  Future<void> setMode(AppMode mode) async {
+    if (mode == _currentMode) return;
+
+    _currentMode = mode;
+    _clearOcr();
+    _statusMessage = mode.displayName;
+    notifyListeners();
+
+    await _speechService.speak(
+      mode.voiceFeedback,
+      priority: SpeechPriority.high,
+    );
+
+    if (isUsingPhoneCamera) {
+      if (mode == AppMode.ocr) {
+        // YOLOView must let go of the camera before the controller can take it.
+        if (_isVisionActive) await stopVision();
+        await _waitForWidgetTeardown();
+        final opened = await _cameraService.openStillCamera();
+        if (!opened) {
+          _ocrStage = OcrStage.failed;
+          _ocrMessage = 'Could not open the camera for reading.';
+          await _speechService.speak(
+            'Camera unavailable',
+            priority: SpeechPriority.high,
+          );
+        }
+      } else {
+        await _cameraService.closeStillCamera();
+        await _waitForWidgetTeardown();
+      }
+    }
+
+    // Best effort: if the device is unreachable the next /events response
+    // resynchronises us anyway.
+    unawaited(_cameraService.setDeviceMode(mode));
+    notifyListeners();
+  }
+
+  /// There are only two modes, so the mode button is a toggle.
+  Future<void> toggleMode() => setMode(_currentMode.toggled);
+
+  /// Gives the framework one frame to actually dispose the outgoing camera
+  /// widget, plus a short grace period for the platform view to release the
+  /// hardware. Without the second part the handover races on slower Androids.
+  Future<void> _waitForWidgetTeardown() async {
+    await SchedulerBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 350));
   }
 
   // ── Vision lifecycle ───────────────────────────────────────────────────────
 
   Future<void> startVision() async {
+    if (_currentMode != AppMode.objectDetection) {
+      await setMode(AppMode.objectDetection);
+    }
+
     if (!_connection.isConnected) {
       await connectCamera();
       if (!_connection.isConnected) return;
     }
 
-    if (!_detectionService.isReady) {
-      _statusMessage = 'Loading object detection model...';
+    // The phone path loads its model inside YOLOView; only the ESP32 path needs
+    // the Dart-side model.
+    if (!isUsingPhoneCamera && !_detectionService.isReady) {
+      _statusMessage = 'Loading detection model...';
       notifyListeners();
       await _detectionService.initialize();
       if (!_detectionService.isReady) {
-        _statusMessage = 'Object detection model failed to load';
+        _detectionError = _detectionService.lastError ?? 'Model failed to load';
+        _statusMessage = 'Detection model failed to load';
         notifyListeners();
+        await _speechService.speak(
+          'Detection model failed to load',
+          priority: SpeechPriority.high,
+        );
         return;
       }
     }
 
     _isVisionActive = true;
+    _detectionError = null;
     _statusMessage = 'Vision active';
     _tracker.reset();
     _scheduler.reset();
 
-    await _speechService.speak(
-      'Vision assistance started. I will alert you to obstacles.',
-      priority: SpeechPriority.high,
-    );
+    await _speechService.speak('Vision on', priority: SpeechPriority.high);
     notifyListeners();
   }
 
   Future<void> stopVision() async {
+    if (!_isVisionActive) return;
     _isVisionActive = false;
-    _statusMessage = 'Vision stopped';
+    _statusMessage = 'Vision paused';
+    _detections = [];
+    _alerts = [];
     _tracker.reset();
     _scheduler.reset();
     await _speechService.stop();
+    notifyListeners();
+  }
+
+  /// Reported by [YOLOView] when its model cannot be loaded.
+  void reportDetectionError(Object error) {
+    _detectionError = error.toString();
+    _statusMessage = 'Detection model failed to load';
+    notifyListeners();
+    unawaited(
+      _speechService.speak(
+        'Detection model failed to load',
+        priority: SpeechPriority.high,
+      ),
+    );
+  }
+
+  void reportDetectionReady() {
+    if (_detectionError == null) return;
+    _detectionError = null;
     notifyListeners();
   }
 
@@ -267,7 +370,7 @@ class VisionProvider extends ChangeNotifier {
   Future<void> scanObstacles() async {
     if (_detections.isEmpty) {
       await _speechService.speak(
-        'No obstacles detected. Path appears clear.',
+        'Path is clear.',
         priority: SpeechPriority.high,
       );
       return;
@@ -276,19 +379,17 @@ class VisionProvider extends ChangeNotifier {
     final hazards = _detections.where((d) => d.isHazard).toList();
     if (hazards.isEmpty) {
       await _speechService.speak(
-        'No immediate hazards. ${_detections.length} objects detected.',
+        '${_detections.length} objects, none in your way.',
         priority: SpeechPriority.high,
       );
       return;
     }
 
-    final text = hazards.map((h) => h.announcement).take(3).join('. ');
+    final text = hazards.map((h) => h.announcement).take(2).join('. ');
     await _speechService.speak(text, priority: SpeechPriority.high);
   }
 
-  Future<void> repeatLast() async {
-    await _speechService.repeatLast();
-  }
+  Future<void> repeatLast() => _speechService.repeatLast();
 
   Future<void> toggleVoiceListening() async {
     if (!_settings.enableVoiceCommands) return;
@@ -297,38 +398,172 @@ class VisionProvider extends ChangeNotifier {
       await _voiceCommandService.stopListening();
     } else {
       final available = await _voiceCommandService.initialize();
-      if (available) {
-        await _speechService.speak('Listening for command');
-        await _voiceCommandService.startListening();
-      }
+      if (available) await _voiceCommandService.startListening();
     }
     notifyListeners();
   }
 
-  // ── Pipeline: phone camera (live stream via YOLOView) ─────────────────────
-  //
-  // Diagram:
-  //   YOLO (native YOLOView)
-  //     ↓  onResult fires every processed frame
-  //   onLiveDetections()
-  //     ↓  raw YOLOResult list
-  //   ObjectTracker.update()       – stable object IDs across frames
-  //     ↓  List<TrackedObject>
-  //   PriorityEngine.rank()        – score + sort by danger
-  //     ↓  List<ScoredObject>
-  //   SceneUnderstanding (inside SpeechScheduler)
-  //     ↓  concise phrase
-  //   SpeechScheduler.process()    – cooldown gating
-  //     ↓  if all gates pass
-  //   SpeechService.speak()        – Text-to-Speech
+  // ── OCR ────────────────────────────────────────────────────────────────────
 
-  /// Entry point called by [YOLOView.onResult] on every processed frame.
+  /// Longest text handed to the TTS engine in one call. Android's engine
+  /// silently truncates past roughly this, so the cut is made here where the
+  /// user can be told it happened.
+  static const int _maxSpokenChars = 3500;
+
+  /// Captures a frame and reads whatever text is in it.
+  ///
+  /// The result is both spoken and left on screen — the screen copy is what a
+  /// sighted helper reads, and what the user can have repeated.
+  Future<void> readText() async {
+    if (isReadingText) return;
+
+    if (_currentMode != AppMode.ocr) {
+      await setMode(AppMode.ocr);
+    }
+
+    _ocrText = '';
+    _ocrMessage = '';
+    _ocrStage = OcrStage.capturing;
+    _statusMessage = 'Capturing…';
+    notifyListeners();
+
+    await _speechService.speak('Reading', priority: SpeechPriority.high);
+
+    String? imagePath;
+    try {
+      imagePath = await _captureForOcr();
+      if (imagePath == null) {
+        _failOcr('No image to read. Check the camera.');
+        return;
+      }
+
+      _ocrStage = OcrStage.recognising;
+      _statusMessage = 'Reading text…';
+      notifyListeners();
+
+      final text = await _ocrService.recognizeText(imagePath);
+      final cleaned = _tidyOcrText(text);
+
+      if (cleaned.isEmpty) {
+        _ocrStage = OcrStage.done;
+        _ocrText = '';
+        _ocrMessage = 'No text found. Move closer and hold steady.';
+        _statusMessage = 'No text found';
+        notifyListeners();
+        await _speechService.speak(
+          'No text found.',
+          priority: SpeechPriority.high,
+        );
+        return;
+      }
+
+      _ocrText = cleaned;
+      _ocrStage = OcrStage.done;
+      _statusMessage = 'Text found';
+      _ocrMessage = '';
+      notifyListeners();
+
+      await _hapticService.success();
+
+      final spoken = cleaned.length > _maxSpokenChars
+          ? '${cleaned.substring(0, _maxSpokenChars)}… Text continues on screen.'
+          : cleaned;
+      await _speechService.speak(spoken, priority: SpeechPriority.high);
+    } catch (e) {
+      debugPrint('[OCR] failed: $e');
+      _failOcr('Could not read the text.');
+    } finally {
+      // The capture is a temp file we created; do not leave a photo of the
+      // user's surroundings on disk after we are done with it.
+      if (imagePath != null) unawaited(_deleteTemp(imagePath));
+    }
+  }
+
+  /// Reads the on-screen result again without taking a new photo.
+  Future<void> repeatText() async {
+    if (_ocrText.isEmpty) {
+      await _speechService.speak(
+        'Nothing to repeat.',
+        priority: SpeechPriority.high,
+      );
+      return;
+    }
+    await _speechService.speak(_ocrText, priority: SpeechPriority.high);
+  }
+
+  /// Stops the current reading and clears the result.
+  Future<void> clearText() async {
+    await _speechService.stop();
+    _clearOcr();
+    notifyListeners();
+  }
+
+  Future<String?> _captureForOcr() async {
+    if (isUsingPhoneCamera) {
+      // Make sure the controller is up — the user may have jumped straight to
+      // the read button without the mode switch having finished.
+      if (phoneController == null) {
+        await _cameraService.openStillCamera();
+      }
+      return _cameraService.captureStill();
+    }
+
+    final frame = _cameraService.latestFrame;
+    if (frame == null || frame.isEmpty) return null;
+
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      '${dir.path}/ocr_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await file.writeAsBytes(frame, flush: true);
+    return file.path;
+  }
+
+  Future<void> _deleteTemp(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // A leftover temp file is not worth surfacing to the user.
+    }
+  }
+
+  /// ML Kit returns one line per detected text block. Joining them with spaces
+  /// keeps the spoken version from pausing awkwardly at every line wrap, while
+  /// paragraph breaks are preserved for the on-screen copy.
+  String _tidyOcrText(String raw) {
+    return raw
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n')
+        .trim();
+  }
+
+  void _failOcr(String message) {
+    _ocrStage = OcrStage.failed;
+    _ocrMessage = message;
+    _statusMessage = message;
+    notifyListeners();
+    unawaited(_speechService.speak(message, priority: SpeechPriority.high));
+  }
+
+  void _clearOcr() {
+    _ocrText = '';
+    _ocrMessage = '';
+    _ocrStage = OcrStage.idle;
+  }
+
+  // ── Pipeline: phone camera (YOLOView live stream) ──────────────────────────
+  //
+  //   YOLOView.onResult  →  filter  →  ObjectTracker  →  PriorityEngine
+  //     →  SceneUnderstanding  →  SpeechScheduler  →  SpeechService
+
+  /// Called by [YOLOView.onResult] on every processed frame.
   void onLiveDetections(List<YOLOResult> results) {
     if (!_isVisionActive) return;
+    if (_currentMode != AppMode.objectDetection) return;
 
-    // Stage 1 result: raw YOLO detections as typed records.
-    // Filter by class allowlist and minimum bounding-box area to reject
-    // irrelevant objects (laptop, cup…) and shadow/noise ghosts.
     final detections = results
         .where((r) {
           if (r.confidence < _settings.detectionConfidence) return false;
@@ -338,59 +573,34 @@ class VisionProvider extends ChangeNotifier {
           if (area < AppConstants.minDetectionArea) return false;
           return true;
         })
-        .map((r) => (label: r.className, box: r.normalizedBox, confidence: r.confidence))
+        .map((r) => (
+              label: r.className,
+              box: r.normalizedBox,
+              confidence: r.confidence,
+            ))
         .toList();
 
-    // Stage 2: object tracking.
-    final trackResult = _tracker.update(detections);
-    
-    // Optional center filtering.
-    var activeTracks = trackResult.active;
-    if (_settings.announceOnlyCenter) {
-      activeTracks = activeTracks.where((t) {
-        final cx = t.boundingBox.center.dx;
-        return cx > 0.33 && cx < 0.67;
-      }).toList();
-    }
-
-    // Stage 3: priority scoring.
-    final ranked = _priorityEngine.rank(activeTracks);
-    _lastRanked = ranked;
-
-    // Update UI state (throttled to ≤10 fps to avoid excessive rebuilds).
-    _detections = ranked.map((o) => _trackedToDetected(o.track)).toList();
-    _alerts = _obstacleAnalyzer.analyze(_detections);
-    _throttledNotify();
-
-    // Stages 4 + 5: scene language + speech gating. Fire-and-forget.
-    _scheduler.process(
-      ranked: ranked,
-      dropped: trackResult.dropped,
-      settings: _settings,
-    ).ignore();
+    _runPipeline(detections);
   }
 
-  // ── Pipeline: ESP32-CAM (HTTP JPEG polling) ────────────────────────────────
-  //
-  // Same 5 stages but stage 1 is ObjectDetectionService.detectObjects()
-  // instead of YOLOView since we get raw JPEG bytes from the network.
+  // ── Pipeline: ESP32-CAM (JPEG over HTTP) ───────────────────────────────────
 
   bool _esp32Processing = false;
   DateTime? _lastEsp32Detection;
 
   Future<void> _onEsp32Frame(Uint8List frame) async {
-    // Phone camera uses YOLOView — ignore frames on that path.
-    if (_cameraService.isUsingPhoneCamera) return;
+    if (isUsingPhoneCamera) return;
 
     _currentFrame = frame;
     _throttledNotify();
 
     if (!_isVisionActive || _esp32Processing) return;
+    if (_currentMode != AppMode.objectDetection) return;
 
-    // Throttle inference to avoid overloading the device.
     final now = DateTime.now();
+    final minGap = _settings.detectionIntervalMs.clamp(200, 5000);
     if (_lastEsp32Detection != null &&
-        now.difference(_lastEsp32Detection!).inMilliseconds < 1200) {
+        now.difference(_lastEsp32Detection!).inMilliseconds < minGap) {
       return;
     }
 
@@ -399,46 +609,25 @@ class VisionProvider extends ChangeNotifier {
     _throttledNotify();
 
     try {
-      debugPrint('[Vision] ESP32 inference on ${frame.length} bytes…');
       final rawObjects = await _detectionService.detectObjects(
         frame,
         minConfidence: _settings.detectionConfidence,
         announceAllObjects: _settings.announceAllObjects,
-        imageWidth: 640,
-        imageHeight: 480,
+        imageWidth: AppConstants.frameWidth,
+        imageHeight: AppConstants.frameHeight,
       );
 
       _lastEsp32Detection = DateTime.now();
 
-      // Stage 2: tracking.
-      final detections = rawObjects
-          .map((o) => (label: o.label, box: o.boundingBox, confidence: o.confidence))
-          .toList();
-      final trackResult = _tracker.update(detections);
-      
-      var activeTracks = trackResult.active;
-      if (_settings.announceOnlyCenter) {
-        activeTracks = activeTracks.where((t) {
-          final cx = t.boundingBox.center.dx;
-          return cx > 0.33 && cx < 0.67;
-        }).toList();
-      }
-
-      // Stage 3: priority.
-      final ranked = _priorityEngine.rank(activeTracks);
-      _lastRanked = ranked;
-
-      // Update UI.
-      _detections = ranked.map((o) => _trackedToDetected(o.track)).toList();
-      _alerts = _obstacleAnalyzer.analyze(_detections);
-
-      debugPrint('[Vision] ESP32 detected ${rawObjects.length} object(s)');
-
-      // Stages 4 + 5: speech.
-      await _scheduler.process(
-        ranked: ranked,
-        dropped: trackResult.dropped,
-        settings: _settings,
+      _runPipeline(
+        rawObjects
+            .map((o) => (
+                  label: o.label,
+                  box: o.boundingBox,
+                  confidence: o.confidence,
+                ))
+            .toList(),
+        awaitSpeech: true,
       );
     } catch (e) {
       debugPrint('[Vision] ESP32 detection error: $e');
@@ -449,9 +638,52 @@ class VisionProvider extends ChangeNotifier {
     }
   }
 
+  // ── Shared pipeline stages 2–5 ─────────────────────────────────────────────
+
+  /// Both camera paths converge here so tracking, ranking and speech gating
+  /// behave identically whichever camera the frame came from. They used to be
+  /// duplicated, and had already drifted apart.
+  void _runPipeline(List<Detection> detections, {bool awaitSpeech = false}) {
+    final trackResult = _tracker.update(detections);
+
+    var activeTracks = trackResult.active;
+    if (_settings.announceOnlyCenter) {
+      activeTracks = activeTracks.where((t) {
+        final cx = t.boundingBox.center.dx;
+        return cx > 0.25 && cx < 0.75;
+      }).toList();
+    }
+
+    final ranked = _priorityEngine.rank(activeTracks);
+    _lastRanked = ranked;
+
+    _detections = ranked.map((o) => _trackedToDetected(o.track)).toList();
+    _alerts = _obstacleAnalyzer.analyze(_detections);
+    _throttledNotify();
+
+    unawaited(
+      _scheduler.process(
+        ranked: ranked,
+        dropped: trackResult.dropped,
+        settings: _settings,
+      ),
+    );
+
+    unawaited(_maybeVibrate());
+  }
+
+  Future<void> _maybeVibrate() async {
+    if (!_settings.enableHaptics) return;
+    final hasImmediate = _detections.any(
+      (d) => d.isHazard && d.proximity == ProximityLevel.immediate,
+    );
+    // HapticService applies its own cooldown, so calling this every frame is
+    // safe — it buzzes at most once every 1.5 s.
+    if (hasImmediate) await _hapticService.alert(critical: true);
+  }
+
   // ── Conversion helpers ─────────────────────────────────────────────────────
 
-  /// Convert a [TrackedObject] into the [DetectedObject] model used by the UI.
   DetectedObject _trackedToDetected(TrackedObject t) {
     final box = t.boundingBox;
     final cx = box.center.dx;
@@ -487,7 +719,7 @@ class VisionProvider extends ChangeNotifier {
     };
     const defaultH = 0.5;
     final realH = knownHeights[t.label.toLowerCase()] ?? defaultH;
-    final pixH = box.height * 480; // Assume 480 px frame height
+    final pixH = box.height * AppConstants.frameHeight;
     final distance = pixH > 0 ? (realH * focalPx) / pixH : null;
 
     return DetectedObject(
@@ -503,8 +735,6 @@ class VisionProvider extends ChangeNotifier {
     );
   }
 
-  // ── UI notification throttle ───────────────────────────────────────────────
-
   void _throttledNotify() {
     final now = DateTime.now();
     if (_lastUIUpdate != null &&
@@ -515,19 +745,23 @@ class VisionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Voice / button event handlers ──────────────────────────────────────────
+  // ── Voice / button handlers ────────────────────────────────────────────────
 
   void _handleVoiceCommand(String command) {
-    if (command.contains('start vision') || command.contains('start')) {
-      startVision();
-    } else if (command.contains('stop vision') || command.contains('stop')) {
-      stopVision();
+    if (command.contains('read') || command.contains('text')) {
+      unawaited(readText());
+    } else if (command.contains('start')) {
+      unawaited(startVision());
+    } else if (command.contains('stop') || command.contains('pause')) {
+      unawaited(stopVision());
     } else if (command.contains('describe')) {
-      describeScene();
+      unawaited(describeScene());
     } else if (command.contains('scan') || command.contains('obstacle')) {
-      scanObstacles();
+      unawaited(scanObstacles());
     } else if (command.contains('repeat')) {
-      repeatLast();
+      unawaited(repeatLast());
+    } else if (command.contains('mode') || command.contains('switch')) {
+      unawaited(toggleMode());
     } else if (command.contains('settings')) {
       _statusMessage = 'navigate:settings';
     } else if (command.contains('help')) {
@@ -539,135 +773,68 @@ class VisionProvider extends ChangeNotifier {
   /// A button press reported by the ESP32.
   ///
   /// The firmware sends the mode it was in at the moment of the press, so we
-  /// adopt that before acting. Without this the phone and the hardware can
-  /// drift apart and the app announces the wrong mode.
+  /// adopt that before acting. Without this the phone and the hardware drift
+  /// apart and the app announces the wrong mode.
   void _onDeviceButtonEvent(ButtonEvent event) {
     final reported = event.parsedMode;
-    if (reported != null) _currentMode = reported;
+    if (reported != null && reported != _currentMode) {
+      unawaited(setMode(reported));
+    }
     handleButtonEvent(event.action);
   }
 
-  /// Handles a button action by name. Called both by [_onDeviceButtonEvent]
-  /// and by the on-screen buttons that mirror the hardware ones.
+  /// Handles a button action by name. Shared by the hardware buttons and the
+  /// on-screen ones that mirror them.
   void handleButtonEvent(String action) {
     switch (action) {
-      case 'toggle_vision':
-        if (_isVisionActive) {
-          stopVision();
-        } else {
-          startVision();
-        }
-      case 'scan_obstacles':
-        scanObstacles();
-      case 'describe_scene':
-        describeScene();
-      // 'mode_announce' is the mode button's long-press on v3 firmware.
-      case 'mode_changed':
-      case 'mode_announce':
-        _statusMessage = 'Mode: ${_currentMode.displayName}';
-        _speechService.speak(
-          _currentMode.voiceFeedback,
-          priority: SpeechPriority.high,
-        );
-      case 'object_detection_request':
-        if (!_isVisionActive) startVision();
-        _statusMessage = 'Analyzing objects in front of you';
-        _speechService.speak(
-          'What is in front of me?',
-          priority: SpeechPriority.high,
-        );
-      case 'ocr_request':
-        _handleOcrRequest();
-      case 'navigation_request':
-        _statusMessage = 'Navigation mode activated';
-        _speechService.speak(
-          'Navigation assistance activated',
-          priority: SpeechPriority.high,
-        );
-      case 'button_1':
+      case ButtonAction.modeButton:
       case 'mode_button':
-        // Toggle mode between object detection and OCR only
-        if (_currentMode == AppMode.objectDetection) {
-          _currentMode = AppMode.ocr;
-          if (_isVisionActive) stopVision();
-        } else {
-          _currentMode = AppMode.objectDetection;
-        }
-        _statusMessage = 'Mode: ${_currentMode.displayName}';
-        _speechService.speak(
-          _currentMode.voiceFeedback,
-          priority: SpeechPriority.high,
-        );
-      case 'button_2':
-      case 'action_button':
-        if (_currentMode == AppMode.objectDetection) {
-          if (_isVisionActive) {
-            stopVision();
-            _speechService.speak('Detection paused', priority: SpeechPriority.high);
-          } else {
-            startVision();
-            _speechService.speak('Detection resumed', priority: SpeechPriority.high);
-          }
-        } else if (_currentMode == AppMode.ocr) {
-          _handleOcrRequest();
-        }
-    }
-    notifyListeners();
-  }
+      case ButtonAction.modeChanged:
+        unawaited(toggleMode());
 
-  void updateModeFromDevice(String modeName) {
-    switch (modeName) {
-      case 'object_detection':
-        _currentMode = AppMode.objectDetection;
-      case 'ocr':
-        _currentMode = AppMode.ocr;
-      case 'navigation':
-        _currentMode = AppMode.navigation;
+      case ButtonAction.actionButton:
+      case 'action_button':
+        // The action button does whatever the current mode is for.
+        if (_currentMode == AppMode.ocr) {
+          unawaited(readText());
+        } else if (_isVisionActive) {
+          unawaited(stopVision());
+        } else {
+          unawaited(startVision());
+        }
+
+      case ButtonAction.modeAnnounce:
+        unawaited(
+          _speechService.speak(
+            _currentMode.voiceFeedback,
+            priority: SpeechPriority.high,
+          ),
+        );
+
+      case ButtonAction.toggleVision:
+        if (_isVisionActive) {
+          unawaited(stopVision());
+        } else {
+          unawaited(startVision());
+        }
+
+      case ButtonAction.ocrRequest:
+        unawaited(readText());
+
+      case ButtonAction.objectDetectionRequest:
+        unawaited(setMode(AppMode.objectDetection));
+        if (!_isVisionActive) unawaited(startVision());
+
+      // v2 firmware.
+      case ButtonAction.scanObstacles:
+        unawaited(scanObstacles());
+      case ButtonAction.describeScene:
+        unawaited(describeScene());
     }
     notifyListeners();
   }
 
   // ── Dispose ────────────────────────────────────────────────────────────────
-
-  Future<void> _handleOcrRequest() async {
-    _statusMessage = 'Capturing and reading text';
-    _speechService.speak(
-      'Capturing and reading text',
-      priority: SpeechPriority.high,
-    );
-    notifyListeners();
-
-    try {
-      String text = '';
-      if (_cameraService.isUsingPhoneCamera) {
-        final controller = _cameraService.phoneController;
-        if (controller != null && controller.value.isInitialized) {
-          final xfile = await controller.takePicture();
-          text = await _ocrService.recognizeText(xfile.path);
-        }
-      } else {
-        final frame = _cameraService.latestFrame;
-        if (frame != null) {
-          final tempDir = await getTemporaryDirectory();
-          final file = File('${tempDir.path}/temp_ocr.jpg');
-          await file.writeAsBytes(frame);
-          text = await _ocrService.recognizeText(file.path);
-        }
-      }
-
-      _lastOcrText = text;
-      notifyListeners();
-
-      if (text.trim().isEmpty) {
-        _speechService.speak('No text detected.', priority: SpeechPriority.high);
-      } else {
-        _speechService.speak('Detected text: $text', priority: SpeechPriority.high);
-      }
-    } catch (e) {
-      _speechService.speak('Error reading text.', priority: SpeechPriority.high);
-      debugPrint('OCR Request Error: $e');
-    }
-  }
 
   @override
   void dispose() {
@@ -675,6 +842,7 @@ class VisionProvider extends ChangeNotifier {
     _frameSub.cancel();
     _buttonEventSub.cancel();
     _ocrService.dispose();
+    unawaited(_speechService.dispose());
     super.dispose();
   }
 }

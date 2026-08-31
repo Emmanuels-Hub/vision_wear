@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_theme.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vision_provider.dart';
+import '../services/speech_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -36,6 +37,57 @@ class SettingsScreen extends StatelessWidget {
                   displayValue: '${(settings.speechRate * 100).toInt()}%',
                   onChanged: (v) async {
                     await settingsProvider.setSpeechRate(v);
+                    vision.updateSettings(settingsProvider.settings);
+                  },
+                ),
+                _SliderTile(
+                  label: 'Pitch',
+                  value: settings.speechPitch,
+                  min: 0.6,
+                  max: 1.6,
+                  divisions: 10,
+                  displayValue: settings.speechPitch.toStringAsFixed(1),
+                  onChanged: (v) async {
+                    await settingsProvider.setSpeechPitch(v);
+                    vision.updateSettings(settingsProvider.settings);
+                  },
+                ),
+                const SizedBox(height: 8),
+                _VoicePicker(
+                  voices: vision.availableVoices,
+                  selectedName: settings.voiceName,
+                  onSelected: (voice) async {
+                    await settingsProvider.setVoice(
+                      voice?.name ?? '',
+                      voice?.locale ?? '',
+                    );
+                    vision.updateSettings(settingsProvider.settings);
+                  },
+                ),
+                const SizedBox(height: 16),
+                _SectionHeader(title: 'Alerts'),
+                _SliderTile(
+                  label: 'Minimum gap between alerts',
+                  value: settings.summarizeIntervalMs.toDouble(),
+                  min: 4000,
+                  max: 15000,
+                  divisions: 11,
+                  displayValue:
+                      '${(settings.summarizeIntervalMs / 1000).toStringAsFixed(0)}s',
+                  onChanged: (v) async {
+                    await settingsProvider.setSummarizeInterval(v.round());
+                    vision.updateSettings(settingsProvider.settings);
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Only what is in your path'),
+                  subtitle: const Text(
+                    'Ignores objects off to the far left and right',
+                  ),
+                  value: settings.announceOnlyCenter,
+                  activeThumbColor: context.appColors.accent,
+                  onChanged: (v) async {
+                    await settingsProvider.setAnnounceOnlyCenter(v);
                     vision.updateSettings(settingsProvider.settings);
                   },
                 ),
@@ -196,6 +248,99 @@ class _ThemeModeTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Lets the user pick the TTS voice by ear.
+///
+/// The default engine voice is the flat, robotic one; the good voices are
+/// installed but never selected unless something asks for them by name. "Best
+/// available" is the automatic choice made by [SpeechService].
+class _VoicePicker extends StatelessWidget {
+  const _VoicePicker({
+    required this.voices,
+    required this.selectedName,
+    required this.onSelected,
+  });
+
+  final List<SpeechVoice> voices;
+  final String selectedName;
+  final ValueChanged<SpeechVoice?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (voices.isEmpty) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Voice'),
+        subtitle: Text(
+          'No alternative voices installed. Add more in your '
+          "phone's text-to-speech settings.",
+          style: TextStyle(color: context.appColors.muted),
+        ),
+      );
+    }
+
+    // Cap the list: some Android engines report over a hundred voices, which
+    // is unusable. They are sorted best-first, so the top of the list is the
+    // part worth showing.
+    final shown = voices.take(12).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Voice', style: context.texts.bodyLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Tap to hear a sample.',
+          style: context.texts.bodySmall?.copyWith(
+            color: context.appColors.muted,
+          ),
+        ),
+        const SizedBox(height: 8),
+        RadioGroup<String>(
+          groupValue: selectedName,
+          onChanged: (name) {
+            if (name == null || name.isEmpty) {
+              onSelected(null);
+              return;
+            }
+            onSelected(voices.firstWhere((v) => v.name == name));
+          },
+          child: Column(
+            children: [
+              RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                value: '',
+                title: const Text('Best available'),
+                subtitle: Text(
+                  'Picks the clearest installed voice automatically',
+                  style: TextStyle(color: context.appColors.muted),
+                ),
+                activeColor: context.appColors.accent,
+              ),
+              for (final voice in shown)
+                RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  value: voice.name,
+                  title: Text(voice.displayName),
+                  subtitle: Text(
+                    voice.locale,
+                    style: TextStyle(color: context.appColors.muted),
+                  ),
+                  activeColor: context.appColors.accent,
+                  secondary: IconButton(
+                    icon: const Icon(Icons.volume_up),
+                    tooltip: 'Preview ${voice.displayName}',
+                    onPressed: () =>
+                        context.read<VisionProvider>().previewVoice(voice),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

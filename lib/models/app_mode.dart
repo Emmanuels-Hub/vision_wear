@@ -1,8 +1,8 @@
-/// Enum for the different application modes.
+/// The two modes the app and the firmware agree on.
 ///
 /// The ordinal order must match the firmware's `AppMode` enum, because the
 /// mode index is what travels over `/mode?set=N`.
-enum AppMode { objectDetection, ocr, navigation }
+enum AppMode { objectDetection, ocr }
 
 extension AppModeExtension on AppMode {
   /// Wire name shared with the firmware.
@@ -12,8 +12,6 @@ extension AppModeExtension on AppMode {
         return 'object_detection';
       case AppMode.ocr:
         return 'ocr';
-      case AppMode.navigation:
-        return 'navigation';
     }
   }
 
@@ -24,45 +22,46 @@ extension AppModeExtension on AppMode {
       case AppMode.objectDetection:
         return 'Object Detection';
       case AppMode.ocr:
-        return 'OCR';
-      case AppMode.navigation:
-        return 'Navigation';
+        return 'Read Text';
     }
   }
 
+  /// Spoken when the mode changes. Deliberately two words: the user hears this
+  /// every time they press the mode button, so it must not be a sentence.
   String get voiceFeedback {
     switch (this) {
       case AppMode.objectDetection:
-        return 'Object Detection Mode';
+        return 'Object detection';
       case AppMode.ocr:
-        return 'OCR Mode';
-      case AppMode.navigation:
-        return 'Navigation Mode';
+        return 'Read text';
     }
   }
 
   String get actionDescription {
     switch (this) {
       case AppMode.objectDetection:
-        return 'What is in front of me?';
+        return 'Detect obstacles ahead';
       case AppMode.ocr:
         return 'Capture and read text';
-      case AppMode.navigation:
-        return 'Navigation assistance';
     }
   }
+
+  /// The other mode. There are only two, so switching is a toggle.
+  AppMode get toggled =>
+      this == AppMode.objectDetection ? AppMode.ocr : AppMode.objectDetection;
 }
 
 /// Parses the firmware's wire name. Returns null for anything unrecognised so
 /// callers can keep their current mode rather than silently resetting it.
+///
+/// Boards still running firmware that reports `navigation` land here and are
+/// ignored, which leaves the app in whatever mode the user last chose.
 AppMode? appModeFromWireName(String? name) {
   switch (name) {
     case 'object_detection':
       return AppMode.objectDetection;
     case 'ocr':
       return AppMode.ocr;
-    case 'navigation':
-      return AppMode.navigation;
     default:
       return null;
   }
@@ -74,8 +73,11 @@ class ButtonAction {
   static const modeAnnounce = 'mode_announce';
   static const objectDetectionRequest = 'object_detection_request';
   static const ocrRequest = 'ocr_request';
-  static const navigationRequest = 'navigation_request';
   static const toggleVision = 'toggle_vision';
+
+  /// v3 firmware's two physical buttons.
+  static const modeButton = 'button_1';
+  static const actionButton = 'button_2';
 
   // Retained so boards still running v2 firmware keep working.
   static const scanObstacles = 'scan_obstacles';
@@ -166,8 +168,7 @@ class DeviceStatus {
       version: json['version'] as String? ?? '0.0.0',
       currentMode: json['current_mode'] as String? ?? 'object_detection',
       availableModes: List<String>.from(
-        json['available_modes'] as List? ??
-            const ['object_detection', 'ocr', 'navigation'],
+        json['available_modes'] as List? ?? const ['object_detection', 'ocr'],
       ),
       cameraReady: json['camera_ready'] as bool? ?? true,
       staConnected: sta?['connected'] as bool? ?? false,

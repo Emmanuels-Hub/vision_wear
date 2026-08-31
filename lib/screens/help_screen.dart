@@ -48,9 +48,8 @@ class HelpScreen extends StatelessWidget {
                   title: Text('Button 2 (GPIO 14): Action Button'),
                   subtitle: Text(
                     'Tap: run the action for the current mode\n'
-                    '• Object Detection: describe what is in front of you\n'
-                    '• OCR: capture and read text (coming soon)\n'
-                    '• Navigation: navigation assistance (coming soon)\n'
+                    '• Object Detection: start or pause obstacle scanning\n'
+                    '• Read Text: capture the view and read the text aloud\n'
                     'Hold: start or stop vision assistance',
                   ),
                 ),

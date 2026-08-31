@@ -103,9 +103,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     button: true,
                     label:
                         'Current mode, ${vision.currentMode.displayName}. '
-                        'Double tap to change mode.',
+                        'Double tap to switch to '
+                        '${vision.currentMode.toggled.displayName}.',
                     child: InkWell(
-                      onTap: vision.cycleMode,
+                      onTap: vision.toggleMode,
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
                         padding: const EdgeInsets.all(16),
@@ -161,7 +162,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: Icons.visibility,
                           isPrimary: true,
                           semanticHint: 'Starts live vision assistance',
-                          onPressed: () => _openVision(context),
+                          onPressed: () =>
+                              _openVision(context, AppMode.objectDetection),
                         ),
                         const SizedBox(height: 12),
                         AccessibleButton(
@@ -176,6 +178,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder: (_) => const ConnectionScreen(),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 12),
+                        AccessibleButton(
+                          label: 'Read Text',
+                          subtitle: 'Capture a sign, label, or page',
+                          icon: Icons.document_scanner,
+                          semanticHint: 'Opens live vision and reads text',
+                          onPressed: () => _openVision(context, AppMode.ocr),
                         ),
                         const SizedBox(height: 12),
                         AccessibleButton(
@@ -248,7 +258,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openVision(BuildContext context) {
+  void _openVision(BuildContext context, AppMode mode) {
+    // Set the mode before pushing, so the vision screen mounts the right
+    // camera consumer on its first frame instead of opening one and
+    // immediately tearing it down again.
+    context.read<VisionProvider>().setMode(mode);
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const VisionScreen()),

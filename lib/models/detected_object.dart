@@ -1,6 +1,6 @@
 import 'dart:ui';
 
-enum SpatialZone { left, center, right, far, near }
+enum SpatialZone { left, center, right }
 
 enum ProximityLevel { distant, approaching, close, immediate }
 
@@ -41,10 +41,6 @@ class DetectedObject {
         return 'ahead';
       case SpatialZone.right:
         return 'to your right';
-      case SpatialZone.far:
-        return 'in the distance';
-      case SpatialZone.near:
-        return 'very close';
     }
   }
 

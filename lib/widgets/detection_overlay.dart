@@ -4,14 +4,9 @@ import '../core/theme/app_theme.dart';
 import '../models/detected_object.dart';
 
 class DetectionOverlay extends StatelessWidget {
-  const DetectionOverlay({
-    super.key,
-    required this.detections,
-    required this.imageSize,
-  });
+  const DetectionOverlay({super.key, required this.detections});
 
   final List<DetectedObject> detections;
-  final Size imageSize;
 
   @override
   Widget build(BuildContext context) {

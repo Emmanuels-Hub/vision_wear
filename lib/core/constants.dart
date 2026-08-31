@@ -35,8 +35,10 @@ class AppConstants {
 
   static const int frameCaptureIntervalMs = 500;
   static const int captureTimeoutMs = 4000;
+
+  /// Probe timeout for the discovery sweep. Short: it is applied to every
+  /// candidate address on the subnet, one after another.
   static const int healthTimeoutMs = 1500;
-  static const int discoveryTimeoutMs = 4000;
 
   /// Reconnect backoff. Deliberately starts fast: a wearable that drops for
   /// three seconds is a safety problem, not an inconvenience.
@@ -48,10 +50,15 @@ class AppConstants {
   /// that a sleeping ESP32 or a WiFi handover leaves behind.
   static const int frameStallTimeoutMs = 4000;
 
-  static const int speechCooldownMs = 2500;
-  static const int criticalAlertCooldownMs = 1200;
-
   // ---- Detection --------------------------------------------------------
+
+  /// The bundled YOLO model. Both detection paths must name the same model,
+  /// otherwise the phone camera and the ESP32 disagree about what they can see.
+  static const String yoloModelPath = 'assets/model.tflite';
+
+  /// Fallback when the bundled model cannot be resolved on the platform side.
+  static const String yoloFallbackModel = 'yolo11n';
+
   static const double obstacleProximityThreshold = 0.18;
   static const double criticalProximityThreshold = 0.35;
 
@@ -116,14 +123,17 @@ class AppConstants {
     'cat',
   ];
 
+  /// Phrases the voice-command parser recognises. Shown verbatim on the help
+  /// screen, so this list and [VisionProvider._handleVoiceCommand] must agree.
   static const List<String> voiceCommands = [
     'start vision',
     'stop vision',
+    'read text',
+    'switch mode',
     'describe scene',
     'scan obstacles',
-    'go home',
-    'open settings',
     'repeat',
+    'open settings',
     'help',
   ];
 }

@@ -51,8 +51,13 @@ void main() {
       final voiceCommandService = VoiceCommandService();
       final ocrService = OcrService();
 
-      speechService.updateSettings(settings);
       cameraService.updateSettings(settings);
+
+      // Awaited: enumerating voices and picking a non-robotic one has to finish
+      // before the first utterance, otherwise the app greets the user in the
+      // engine's default voice and only switches later.
+      await speechService.initialize();
+      await speechService.updateSettings(settings);
 
       runApp(
         VisionWearApp(

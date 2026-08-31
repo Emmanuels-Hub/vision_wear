@@ -615,6 +615,24 @@ class Esp32CameraService {
   }
 
   // ===================== Phone camera =====================
+  //
+  // Ownership rule, and the reason the preview used to come up black:
+  //
+  //   * In object-detection mode the native `YOLOView` widget opens the camera
+  //     itself and runs inference on its own frames.
+  //   * In OCR mode we need a still photo, which YOLOView cannot give us, so a
+  //     `CameraController` opens the camera instead.
+  //
+  // Only one of the two may hold the device at a time. The old code created a
+  // CameraController on connect() *and* left YOLOView mounted, so both fought
+  // over the same sensor — on Android the second open fails and on iOS the
+  // preview freezes. It also drove `takePicture()` from a Timer to fake a frame
+  // stream, which fires the shutter, re-runs autofocus and stalls for hundreds
+  // of milliseconds per frame.
+  //
+  // So: connecting the phone camera is now a no-op beyond a capability check,
+  // and [openStillCamera] / [closeStillCamera] hand the sensor between the two
+  // consumers explicitly.
 
   Future<void> _connectPhoneCamera() async {
     _updateConnection(
@@ -624,7 +642,7 @@ class Esp32CameraService {
     );
 
     try {
-      _cameras = await availableCameras();
+      _cameras ??= await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
         _updateConnection(
           status: ConnectionStatus.error,
@@ -633,27 +651,6 @@ class Esp32CameraService {
         );
         return;
       }
-
-      final camera = _cameras!.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-        orElse: () => _cameras!.first,
-      );
-
-      _phoneController = CameraController(
-        camera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      await _phoneController!.initialize();
-
-      final interval = math.max(120, _settings.frameIntervalMs);
-      _pollTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
-        if (_pollInFlight) return;
-        unawaited(_capturePhoneFrame());
-      });
-      await _capturePhoneFrame();
 
       _updateConnection(
         status: ConnectionStatus.connected,
@@ -670,24 +667,69 @@ class Esp32CameraService {
     }
   }
 
-  Future<void> _capturePhoneFrame() async {
-    final controller = _phoneController;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (_pollInFlight) return;
+  /// Opens a [CameraController] for still capture, used by OCR mode.
+  ///
+  /// The caller must have torn down any `YOLOView` first, otherwise this fails
+  /// with a device-in-use error from the platform.
+  Future<bool> openStillCamera() async {
+    if (!_settings.usePhoneCamera) return false;
+    final existing = _phoneController;
+    if (existing != null && existing.value.isInitialized) return true;
 
-    _pollInFlight = true;
     try {
-      final start = DateTime.now();
-      final file = await controller.takePicture();
-      final bytes = await file.readAsBytes();
-      _emitFrame(
-        bytes,
-        latencyMs: DateTime.now().difference(start).inMilliseconds,
+      _cameras ??= await availableCameras();
+      final cameras = _cameras;
+      if (cameras == null || cameras.isEmpty) return false;
+
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
       );
+
+      // `high` rather than `medium`: OCR accuracy is bounded by how many pixels
+      // land on each glyph, and medium loses small print entirely.
+      final controller = CameraController(
+        camera,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+      await controller.initialize();
+      _phoneController = controller;
+      _emitConnection();
+      return true;
+    } catch (e) {
+      debugPrint('Still camera open failed: $e');
+      _phoneController = null;
+      return false;
+    }
+  }
+
+  /// Releases the still-capture controller so `YOLOView` can take the sensor
+  /// back when the user returns to object-detection mode.
+  Future<void> closeStillCamera() async {
+    final controller = _phoneController;
+    _phoneController = null;
+    if (controller == null) return;
+    try {
+      await controller.dispose();
     } catch (_) {
-      // Transient capture failures are normal while the sensor refocuses.
-    } finally {
-      _pollInFlight = false;
+      // Disposing a controller that already errored throws; nothing to do.
+    }
+    _emitConnection();
+  }
+
+  /// Takes one photo for OCR and returns its path, or null if unavailable.
+  Future<String?> captureStill() async {
+    final controller = _phoneController;
+    if (controller == null || !controller.value.isInitialized) return null;
+    if (controller.value.isTakingPicture) return null;
+    try {
+      final file = await controller.takePicture();
+      return file.path;
+    } catch (e) {
+      debugPrint('Still capture failed: $e');
+      return null;
     }
   }
 
@@ -782,15 +824,10 @@ class Esp32CameraService {
       _eventClient = http.Client();
     }
 
-    if (_phoneController != null) {
-      try {
-        await _phoneController!.dispose();
-      } catch (_) {}
-      _phoneController = null;
-    }
   }
 
   Future<void> dispose() async {
+    await closeStillCamera();
     _wantConnection = false;
     _reconnectTimer?.cancel();
     _watchdogTimer?.cancel();

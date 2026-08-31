@@ -23,12 +23,13 @@ class AppSettings {
     this.detectionConfidence = 0.55,
     this.frameIntervalMs = AppConstants.frameCaptureIntervalMs,
     this.detectionIntervalMs = 350,
-    this.summarizeIntervalMs = 3000,
-    this.announceFrameChanges = true,
+    this.summarizeIntervalMs = 6000,
     this.hasCompletedOnboarding = false,
     this.announceAllObjects = false,
-    this.announceOnlyCenter = false,
+    this.announceOnlyCenter = true,
     this.languageCode = 'en-US',
+    this.voiceName = '',
+    this.voiceLocale = '',
     this.themeMode = ThemeMode.system,
   });
 
@@ -70,10 +71,6 @@ class AppSettings {
   /// user hears.
   final int summarizeIntervalMs;
 
-  /// Announce what entered and left the scene rather than re-reading the whole
-  /// scene each time.
-  final bool announceFrameChanges;
-
   final bool hasCompletedOnboarding;
   final bool announceAllObjects;
 
@@ -83,6 +80,14 @@ class AppSettings {
 
   final String languageCode;
 
+  /// Platform TTS voice, by engine name (e.g. `en-us-x-tpd-network`). Empty
+  /// means "let SpeechService pick the best-sounding installed voice", which
+  /// is what stops the app defaulting to the robotic eSpeak fallback.
+  final String voiceName;
+
+  /// Locale that goes with [voiceName]. Both are needed by `setVoice`.
+  final String voiceLocale;
+
   /// Light / dark / follow the OS. Defaults to system so the app matches
   /// whatever the user has already configured for accessibility.
   final ThemeMode themeMode;
@@ -91,8 +96,6 @@ class AppSettings {
   String get captureUrl => 'http://$esp32Ip:$controlPort$capturePath';
   String get statusUrl =>
       'http://$esp32Ip:$controlPort${AppConstants.defaultStatusPath}';
-  String get healthUrl =>
-      'http://$esp32Ip:$controlPort${AppConstants.defaultHealthPath}';
   String get streamUrl => 'http://$esp32Ip:$streamPort$streamPath';
   String get eventsUrl => 'http://$esp32Ip:$eventsPort$eventsPath';
 
@@ -120,11 +123,12 @@ class AppSettings {
     int? frameIntervalMs,
     int? detectionIntervalMs,
     int? summarizeIntervalMs,
-    bool? announceFrameChanges,
     bool? hasCompletedOnboarding,
     bool? announceAllObjects,
     bool? announceOnlyCenter,
     String? languageCode,
+    String? voiceName,
+    String? voiceLocale,
     ThemeMode? themeMode,
   }) {
     return AppSettings(
@@ -148,12 +152,13 @@ class AppSettings {
       frameIntervalMs: frameIntervalMs ?? this.frameIntervalMs,
       detectionIntervalMs: detectionIntervalMs ?? this.detectionIntervalMs,
       summarizeIntervalMs: summarizeIntervalMs ?? this.summarizeIntervalMs,
-      announceFrameChanges: announceFrameChanges ?? this.announceFrameChanges,
       hasCompletedOnboarding:
           hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       announceAllObjects: announceAllObjects ?? this.announceAllObjects,
       announceOnlyCenter: announceOnlyCenter ?? this.announceOnlyCenter,
       languageCode: languageCode ?? this.languageCode,
+      voiceName: voiceName ?? this.voiceName,
+      voiceLocale: voiceLocale ?? this.voiceLocale,
       themeMode: themeMode ?? this.themeMode,
     );
   }
@@ -179,11 +184,12 @@ class AppSettings {
     'frameIntervalMs': frameIntervalMs,
     'detectionIntervalMs': detectionIntervalMs,
     'summarizeIntervalMs': summarizeIntervalMs,
-    'announceFrameChanges': announceFrameChanges,
     'hasCompletedOnboarding': hasCompletedOnboarding,
     'announceAllObjects': announceAllObjects,
     'announceOnlyCenter': announceOnlyCenter,
     'languageCode': languageCode,
+    'voiceName': voiceName,
+    'voiceLocale': voiceLocale,
     'themeMode': themeMode.name,
   };
 
@@ -218,8 +224,6 @@ class AppSettings {
           defaults.detectionIntervalMs,
       summarizeIntervalMs: (map['summarizeIntervalMs'] as num?)?.toInt() ??
           defaults.summarizeIntervalMs,
-      announceFrameChanges:
-          map['announceFrameChanges'] as bool? ?? defaults.announceFrameChanges,
       hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ??
           defaults.hasCompletedOnboarding,
       announceAllObjects:
@@ -227,6 +231,8 @@ class AppSettings {
       announceOnlyCenter:
           map['announceOnlyCenter'] as bool? ?? defaults.announceOnlyCenter,
       languageCode: map['languageCode'] as String? ?? defaults.languageCode,
+      voiceName: map['voiceName'] as String? ?? defaults.voiceName,
+      voiceLocale: map['voiceLocale'] as String? ?? defaults.voiceLocale,
       themeMode: ThemeMode.values.firstWhere(
         (m) => m.name == map['themeMode'],
         orElse: () => defaults.themeMode,

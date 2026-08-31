@@ -6,8 +6,26 @@ import 'priority_engine.dart';
 import 'scene_understanding.dart';
 import 'speech_service.dart';
 
-/// Smart speech gate that converts a prioritised object list into spoken alerts
-/// without overwhelming a blind user with constant audio noise.
+/// Decides when the app is allowed to speak during live detection.
+///
+/// This is the component that keeps the app usable. YOLO produces detections
+/// tens of times a second; a blind user walking down a street can absorb an
+/// announcement roughly every five seconds. Everything in between has to be
+/// thrown away, and thrown away in a way that keeps the *useful* announcement
+/// rather than the first or the loudest one.
+///
+/// Three gates, in order:
+///   1. **Hard floor.** Never speak twice inside [_minGapMs], whatever happens,
+///      except for a critical hazard.
+///   2. **Novelty.** Only speak when the scene has actually changed — a new
+///      object worth mentioning, or the nearest hazard becoming more urgent.
+///      A static scene produces silence, not a repeated description.
+///   3. **Repetition.** Never repeat identical wording inside
+///      [_sameTextCooldownMs], even if the scene technically "changed".
+///
+/// Objects *leaving* the frame are deliberately never announced. The old
+/// implementation said "chair left" every time something walked out of view,
+/// which is noise: the user cares about what is in their way, not what is not.
 class SpeechScheduler {
   SpeechScheduler({required SpeechService speechService})
       : _speech = speechService;
@@ -15,119 +33,113 @@ class SpeechScheduler {
   final SpeechService _speech;
   final SceneUnderstanding _scene = SceneUnderstanding();
 
-  // ── Cooldown constants ─────────────────────────────────────────────────────
+  // ── Cooldowns ──────────────────────────────────────────────────────────────
 
-  /// Minimum milliseconds before repeating the exact same text.
-  static const int _sameTextCooldownMs = 8000;
+  /// Absolute minimum between two ordinary announcements.
+  static const int _minGapMs = 4000;
+
+  /// Minimum before repeating the exact same sentence.
+  static const int _sameTextCooldownMs = 12000;
+
+  /// Critical hazards bypass [_minGapMs] but not this.
+  static const int _criticalCooldownMs = 2500;
 
   // ── State ──────────────────────────────────────────────────────────────────
 
   String? _lastText;
   DateTime? _lastAnnouncedAt;
-  DateTime? _lastSummaryAt;
+  DateTime? _lastCriticalAt;
 
-  // ── Accumulators for events between summaries ──────────────────────────────
-  final Map<String, TrackedObject> _accumulatedNew = {};
-  final Map<String, TrackedObject> _accumulatedDropped = {};
+  /// Track IDs already mentioned, so an object that stays in view is described
+  /// once rather than on every summary tick.
+  final Set<String> _announcedIds = <String>{};
 
-  /// Main entry point. Called every detection frame.
+  /// Called on every detection frame.
   Future<void> process({
     required List<ScoredObject> ranked,
     required List<TrackedObject> dropped,
     required AppSettings settings,
   }) async {
     final now = DateTime.now();
-    _lastSummaryAt ??= now;
 
-    // Accumulate newly appearing and dropped objects
-    final newObjects = ranked.map((o) => o.track).where((t) => t.isNew).toList();
-    
-    // We only care about objects that are actually new to our accumulated list
-    for (final t in newObjects) {
-      if (!_accumulatedNew.containsKey(t.id)) {
-        _accumulatedNew[t.id] = t;
-      }
-    }
+    // Forget objects that have left, so the same chair encountered again later
+    // is announced again rather than being suppressed forever.
     for (final t in dropped) {
-      if (!_accumulatedDropped.containsKey(t.id)) {
-        _accumulatedDropped[t.id] = t;
-      }
+      _announcedIds.remove(t.id);
     }
 
-    // Check if it's time to summarize or announce frame changes
-    final elapsedSinceSummary = now.difference(_lastSummaryAt!).inMilliseconds;
-    
-    if (elapsedSinceSummary >= settings.summarizeIntervalMs) {
-      String? alertText;
+    final worthSaying =
+        ranked.where((o) => o.score >= ScoredObject.announceThreshold).toList();
+    if (worthSaying.isEmpty) return;
 
-      if (settings.announceFrameChanges) {
-        // Remove objects that appeared and disappeared within the same window
-        final actuallyNew = _accumulatedNew.values.where((t) => !_accumulatedDropped.containsKey(t.id)).toList();
-        final actuallyDropped = _accumulatedDropped.values.where((t) => !_accumulatedNew.containsKey(t.id)).toList();
-
-        alertText = _scene.buildEventAlert(
-          newObjects: actuallyNew,
-          droppedObjects: actuallyDropped,
-        );
-      } else {
-        // Just summarize the current scene
-        alertText = _scene.buildAlert(ranked);
-      }
-
-      _accumulatedNew.clear();
-      _accumulatedDropped.clear();
-      _lastSummaryAt = now;
-
-      if (alertText != null && alertText.isNotEmpty) {
-        // Check same-text cooldown
-        if (_lastText == alertText &&
-            _lastAnnouncedAt != null &&
-            now.difference(_lastAnnouncedAt!).inMilliseconds < _sameTextCooldownMs) {
-          return;
-        }
-
-        _lastText = alertText;
+    // ── Gate 1a: critical hazard, allowed to interrupt ───────────────────────
+    final top = worthSaying.first;
+    if (_isCritical(top)) {
+      if (_lastCriticalAt == null ||
+          now.difference(_lastCriticalAt!).inMilliseconds >=
+              _criticalCooldownMs) {
+        final text = _scene.buildUrgentAlert(top.track);
+        _lastCriticalAt = now;
         _lastAnnouncedAt = now;
-
-        debugPrint('[SpeechScheduler] Announcing: "$alertText"');
-        await _speech.speak(
-          alertText,
-          priority: SpeechPriority.normal,
-        );
+        _lastText = text;
+        _announcedIds.add(top.track.id);
+        debugPrint('[Speech] critical: "$text"');
+        await _speech.speak(text, priority: SpeechPriority.critical);
       }
-    } else {
-      // Urgent Hazards (Critical) should still interrupt the summary wait period
-      final top = ranked.where((o) => o.score >= ScoredObject.announceThreshold).toList();
-      if (top.isNotEmpty && _isCritical(top.first)) {
-        final alertText = _scene.buildAlert([top.first]);
-        if (alertText != null) {
-          if (_lastText == alertText &&
-              _lastAnnouncedAt != null &&
-              now.difference(_lastAnnouncedAt!).inMilliseconds < 2000) {
-            return; // critical cooldown
-          }
-
-          _lastText = alertText;
-          _lastAnnouncedAt = now;
-          await _speech.speak(alertText, priority: SpeechPriority.critical);
-        }
-      }
+      return;
     }
+
+    // ── Gate 1b: hard floor between ordinary announcements ───────────────────
+    if (_lastAnnouncedAt != null &&
+        now.difference(_lastAnnouncedAt!).inMilliseconds <
+            _effectiveGapMs(settings)) {
+      return;
+    }
+
+    // ── Gate 2: novelty ──────────────────────────────────────────────────────
+    // Only objects the user has not already been told about.
+    final unannounced = worthSaying
+        .where((o) => !_announcedIds.contains(o.track.id))
+        .toList();
+    if (unannounced.isEmpty) return;
+
+    final text = _scene.buildAlert(unannounced);
+    if (text == null || text.isEmpty) return;
+
+    // ── Gate 3: repetition ───────────────────────────────────────────────────
+    if (_lastText == text &&
+        _lastAnnouncedAt != null &&
+        now.difference(_lastAnnouncedAt!).inMilliseconds <
+            _sameTextCooldownMs) {
+      return;
+    }
+
+    for (final o in unannounced.take(2)) {
+      _announcedIds.add(o.track.id);
+    }
+    _lastText = text;
+    _lastAnnouncedAt = now;
+
+    debugPrint('[Speech] announce: "$text"');
+    await _speech.speak(text, priority: SpeechPriority.normal);
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  /// The user's summarise interval, but never faster than the hard floor.
+  int _effectiveGapMs(AppSettings settings) =>
+      settings.summarizeIntervalMs > _minGapMs
+          ? settings.summarizeIntervalMs
+          : _minGapMs;
 
   bool _isCritical(ScoredObject o) {
     final cx = o.track.boundingBox.center.dx;
-    // Critical = large box (close) AND roughly in the user's path.
+    // Large box (so: close) and roughly in the user's walking path.
     return o.track.area > 0.18 && cx > 0.22 && cx < 0.78;
   }
 
   void reset() {
     _lastText = null;
     _lastAnnouncedAt = null;
-    _lastSummaryAt = null;
-    _accumulatedNew.clear();
-    _accumulatedDropped.clear();
+    _lastCriticalAt = null;
+    _announcedIds.clear();
   }
 }

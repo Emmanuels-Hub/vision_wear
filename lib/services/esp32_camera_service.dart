@@ -13,6 +13,7 @@ import '../models/app_settings.dart';
 import '../models/connection_state.dart';
 import 'device_discovery_service.dart';
 import 'mjpeg_parser.dart';
+import 'network_binding_service.dart';
 
 /// Owns the link to the camera and keeps it alive.
 ///
@@ -32,10 +33,21 @@ import 'mjpeg_parser.dart';
 ///   * supervises the link: a stall watchdog plus capped exponential backoff
 ///     that retries indefinitely until told to stop.
 class Esp32CameraService {
-  Esp32CameraService({DeviceDiscoveryService? discoveryService})
-    : _discovery = discoveryService ?? DeviceDiscoveryService();
+  Esp32CameraService({
+    DeviceDiscoveryService? discoveryService,
+    NetworkBindingService? networkBinding,
+  })  : _discovery = discoveryService ?? DeviceDiscoveryService(),
+        _network = networkBinding ?? NetworkBindingService();
 
   final DeviceDiscoveryService _discovery;
+
+  /// Keeps the app's sockets on the WiFi interface. Without this, Android
+  /// routes requests for the camera over mobile data and they never arrive.
+  final NetworkBindingService _network;
+
+  /// Exposed so the connection screen can explain a failure in terms of what
+  /// the phone's networking is actually doing.
+  Future<NetworkRouting> networkRouting() => _network.status();
 
   // Two clients so a stalled frame read can never delay a button event.
   http.Client _frameClient = http.Client();
@@ -151,6 +163,9 @@ class Esp32CameraService {
     _discoverySub = null;
     await _discovery.stopBeaconListener();
 
+    await _network.releaseMulticastLock();
+    await _network.unbind();
+
     _latestFrame = null;
     _seenEventIds.clear();
     _frameTimestamps.clear();
@@ -218,9 +233,17 @@ class Esp32CameraService {
 
     try {
       if (_settings.usePhoneCamera) {
+        // The phone camera needs no network, and staying bound to a WiFi with
+        // no internet would cut the rest of the app off for no reason.
+        await _network.unbind();
+        await _network.releaseMulticastLock();
         await _connectPhoneCamera();
         return;
       }
+
+      // Do this before any request goes out, including discovery.
+      await _network.bindToWifi();
+      await _network.acquireMulticastLock();
 
       final isRetry = _reconnectAttempts > 0;
       _updateConnection(
@@ -828,6 +851,8 @@ class Esp32CameraService {
 
   Future<void> dispose() async {
     await closeStillCamera();
+    await _network.releaseMulticastLock();
+    await _network.unbind();
     _wantConnection = false;
     _reconnectTimer?.cancel();
     _watchdogTimer?.cancel();

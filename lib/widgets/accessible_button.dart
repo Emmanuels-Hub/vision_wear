@@ -24,14 +24,19 @@ class AccessibleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttonColor =
-        color ?? (isPrimary ? context.colors.primary : context.colors.surfaceContainerHighest);
-    // Pick the foreground from the actual button fill so the label stays
-    // legible in both themes and against a caller-supplied colour.
+    final buttonColor = color ??
+        (isPrimary
+            ? context.colors.primary
+            : context.colors.surfaceContainerHighest);
+
+    // Derive the foreground from the actual fill so the label stays legible in
+    // both themes and against a caller-supplied colour. The two candidates come
+    // from the scheme rather than being literal black and white, so a themed
+    // surface still gets a themed label.
     final foreground =
         ThemeData.estimateBrightnessForColor(buttonColor) == Brightness.dark
-            ? Colors.white
-            : Colors.black87;
+            ? context.colors.onInverseSurface
+            : context.colors.onSurface;
 
     return Semantics(
       button: true,

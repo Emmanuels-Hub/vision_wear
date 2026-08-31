@@ -6,6 +6,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/constants.dart';
+import '../core/layout.dart';
 import '../core/theme/app_theme.dart';
 import '../models/app_mode.dart';
 import '../providers/vision_provider.dart';
@@ -143,27 +144,60 @@ class _VisionScreenState extends State<VisionScreen> {
                 ),
             ],
           ),
-          body: Column(
-            children: [
-              Expanded(
-                flex: 3,
-                child: _cameraPermissionDenied
-                    ? _CameraPermissionPrompt(
-                        permanentlyDenied: _cameraPermissionPermanentlyDenied,
-                        onRetry: _retryCameraPermission,
-                      )
-                    : _CameraStage(vision: vision),
-              ),
-              Expanded(
-                flex: 2,
-                child: isOcr
-                    ? _OcrPanel(vision: vision)
-                    : _DetectionPanel(vision: vision),
-              ),
-            ],
+          body: SafeArea(
+            child: _VisionLayout(
+              camera: _cameraPermissionDenied
+                  ? _CameraPermissionPrompt(
+                      permanentlyDenied: _cameraPermissionPermanentlyDenied,
+                      onRetry: _retryCameraPermission,
+                    )
+                  : _CameraStage(vision: vision),
+              panel: isOcr
+                  ? _OcrPanel(vision: vision)
+                  : _DetectionPanel(vision: vision),
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+// ── Responsive split ──────────────────────────────────────────────────────────
+
+/// Stacks the camera above its panel on a phone in portrait, and puts them
+/// side by side when the window is short or wide.
+///
+/// Stacking is the right default — the camera wants the width. But a phone in
+/// landscape is only ~360px tall, and splitting that 3:2 leaves the panel with
+/// roughly 140px, which cannot hold the OCR text or the two action buttons.
+class _VisionLayout extends StatelessWidget {
+  const _VisionLayout({required this.camera, required this.panel});
+
+  final Widget camera;
+  final Widget panel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (context.prefersSideBySide) {
+      return Row(
+        children: [
+          Expanded(flex: 3, child: camera),
+          // Fixed rather than proportional: the panel needs a readable width,
+          // and on a very wide window a 40% share is far more than it uses.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420, minWidth: 300),
+            child: panel,
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(flex: 3, child: camera),
+        Expanded(flex: 2, child: panel),
+      ],
     );
   }
 }
@@ -220,7 +254,7 @@ class _CameraPermissionPrompt extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: Colors.black, // letterbox behind live video, not an app surface
+      color: context.appColors.letterbox,
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -339,9 +373,7 @@ class _Letterbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Black because the backdrop is live video, not an app surface — a themed
-    // surface colour here would glow around the frame.
-    return Container(color: Colors.black, child: child);
+    return Container(color: context.appColors.letterbox, child: child);
   }
 }
 

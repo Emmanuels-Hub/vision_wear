@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants.dart';
+import '../core/layout.dart';
 import '../core/theme/app_theme.dart';
 import '../models/app_mode.dart';
 import '../providers/settings_provider.dart';
@@ -150,9 +151,10 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               ),
             ],
           ),
-          body: SafeArea(
+          body: AppPageBody(
+            padding: EdgeInsets.zero,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: context.pagePadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

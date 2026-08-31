@@ -174,8 +174,11 @@ class AppTheme {
   static const AppColors _darkColors = AppColors(
     accent: goldLight,
     onAccent: onGold,
-    warning: Color(0xFFFF9800),
-    onWarning: Color(0xFF2B1500),
+    // Deep orange, not amber. Amber sits within a few degrees of hue *and*
+    // within 2% of the luminance of the gold primary, so an amber caution
+    // state was indistinguishable from an ordinary one at a glance.
+    warning: Color(0xFFE64A19),
+    onWarning: Colors.white,
     danger: brandDanger,
     onDanger: Colors.white,
     success: Color(0xFF43A047),

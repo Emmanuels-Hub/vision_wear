@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
+import '../core/layout.dart';
 import '../core/theme/app_theme.dart';
 
 class HelpScreen extends StatelessWidget {
@@ -10,9 +11,10 @@ class HelpScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Help & Setup')),
-      body: SafeArea(
+      body: AppPageBody(
+        padding: EdgeInsets.zero,
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: context.pagePadding,
           children: [
             _HelpSection(
               title: 'Voice Commands',
@@ -39,7 +41,7 @@ class HelpScreen extends StatelessWidget {
                   leading: Icon(Icons.circle, color: context.appColors.accent),
                   title: Text('Button 1 (GPIO 13): Mode Button'),
                   subtitle: Text(
-                    'Tap: cycle Object Detection → OCR → Navigation\n'
+                    'Tap: switch between Object Detection and Read Text\n'
                     'Hold: repeat the current mode out loud',
                   ),
                 ),

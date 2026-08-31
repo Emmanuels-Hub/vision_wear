@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants.dart';
+import '../core/layout.dart';
 import '../core/theme/app_theme.dart';
 import '../models/app_mode.dart';
 import '../providers/settings_provider.dart';
@@ -75,9 +76,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
+          body: AppPageBody(
+            child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -153,81 +153,73 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 28),
-                  Expanded(
-                    child: ListView(
-                      children: [
-                        AccessibleButton(
-                          label: 'Start Vision',
-                          subtitle: 'Detect obstacles and objects in real-time',
-                          icon: Icons.visibility,
-                          isPrimary: true,
-                          semanticHint: 'Starts live vision assistance',
-                          onPressed: () =>
-                              _openVision(context, AppMode.objectDetection),
-                        ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Camera Connection',
-                          subtitle: vision.connection.isConnected
-                              ? 'Connected'
-                              : 'Set up ESP32-CAM',
-                          icon: Icons.wifi_tethering,
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const ConnectionScreen(),
-                            ),
+                  ResponsiveActionGrid(
+                    children: [
+                      AccessibleButton(
+                        label: 'Start Vision',
+                        subtitle: 'Detect obstacles ahead in real time',
+                        icon: Icons.visibility,
+                        isPrimary: true,
+                        semanticHint: 'Starts live vision assistance',
+                        onPressed: () =>
+                            _openVision(context, AppMode.objectDetection),
+                      ),
+                      AccessibleButton(
+                        label: 'Read Text',
+                        subtitle: 'Capture a sign, label, or page',
+                        icon: Icons.document_scanner,
+                        semanticHint: 'Opens live vision and reads text aloud',
+                        onPressed: () => _openVision(context, AppMode.ocr),
+                      ),
+                      AccessibleButton(
+                        label: 'Scan Obstacles',
+                        subtitle: 'Check for hazards on your path',
+                        icon: Icons.warning_amber,
+                        color: context.appColors.warning.withValues(alpha: 0.3),
+                        onPressed: vision.scanObstacles,
+                      ),
+                      AccessibleButton(
+                        label: 'Describe Scene',
+                        subtitle: 'Hear what is around you now',
+                        icon: Icons.record_voice_over,
+                        onPressed: vision.describeScene,
+                      ),
+                      AccessibleButton(
+                        label: 'Camera Connection',
+                        subtitle: vision.connection.isConnected
+                            ? 'Connected'
+                            : 'Set up ESP32-CAM',
+                        icon: Icons.wifi_tethering,
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ConnectionScreen(),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Read Text',
-                          subtitle: 'Capture a sign, label, or page',
-                          icon: Icons.document_scanner,
-                          semanticHint: 'Opens live vision and reads text',
-                          onPressed: () => _openVision(context, AppMode.ocr),
-                        ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Describe Scene',
-                          subtitle: 'Hear what is around you now',
-                          icon: Icons.record_voice_over,
-                          onPressed: vision.describeScene,
-                        ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Scan Obstacles',
-                          subtitle: 'Check for hazards on your path',
-                          icon: Icons.warning_amber,
-                          color: context.appColors.warning.withValues(alpha: 0.3),
-                          onPressed: vision.scanObstacles,
-                        ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Settings',
-                          subtitle: 'Speech, detection, and preferences',
-                          icon: Icons.settings,
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SettingsScreen(),
-                            ),
+                      ),
+                      AccessibleButton(
+                        label: 'Settings',
+                        subtitle: 'Voice, theme, detection',
+                        icon: Icons.settings,
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        AccessibleButton(
-                          label: 'Help & Setup',
-                          subtitle: 'ESP32 guide and voice commands',
-                          icon: Icons.help_outline,
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const HelpScreen(),
-                            ),
+                      ),
+                      AccessibleButton(
+                        label: 'Help & Setup',
+                        subtitle: 'ESP32 guide and voice commands',
+                        icon: Icons.help_outline,
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const HelpScreen(),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),

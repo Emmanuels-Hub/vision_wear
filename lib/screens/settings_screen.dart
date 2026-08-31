@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout.dart';
 import '../core/theme/app_theme.dart';
 import '../providers/settings_provider.dart';
 import '../providers/vision_provider.dart';
@@ -17,9 +18,10 @@ class SettingsScreen extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(title: const Text('Settings')),
-          body: SafeArea(
+          body: AppPageBody(
+            padding: EdgeInsets.zero,
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: context.pagePadding,
               children: [
                 _SectionHeader(title: 'Appearance'),
                 _ThemeModeTile(

@@ -40,6 +40,9 @@ class _VisionScreenState extends State<VisionScreen> {
   void dispose() {
     WakelockPlus.disable();
     _vision.stopVision();
+    // Do not leave the OCR still-capture camera holding the sensor once this
+    // screen is gone.
+    _vision.releaseCamera();
     super.dispose();
   }
 
@@ -53,10 +56,12 @@ class _VisionScreenState extends State<VisionScreen> {
     }
     if (!mounted) return;
 
-    // Only auto-start the detector. Landing in OCR mode should leave the
-    // camera idle until the user asks for a reading.
+    // Only auto-start the detector. Landing in OCR mode brings the preview up
+    // but leaves the reading itself until the user asks for it.
     if (vision.currentMode == AppMode.objectDetection) {
       await vision.startVision();
+    } else {
+      await vision.prepareCameraForMode();
     }
   }
 

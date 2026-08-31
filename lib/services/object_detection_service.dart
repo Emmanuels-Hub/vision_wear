@@ -114,10 +114,16 @@ class ObjectDetectionService {
         final (label, confidence, rect) = parsed;
 
         if (confidence < minConfidence) continue;
+
+        // Same gate the phone path applies in VisionProvider.onLiveDetections.
+        // These used to differ — the ESP32 path filtered on `hazardLabels` and
+        // skipped the area check — so the two cameras reported different
+        // objects from the same scene.
         if (!announceAllObjects &&
-            !AppConstants.hazardLabels.contains(label)) {
+            !AppConstants.allowedLabels.contains(label)) {
           continue;
         }
+        if (rect.width * rect.height < AppConstants.minDetectionArea) continue;
 
         objects.add(
           DetectedObject(

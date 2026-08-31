@@ -281,6 +281,34 @@ class VisionProvider extends ChangeNotifier {
   /// There are only two modes, so the mode button is a toggle.
   Future<void> toggleMode() => setMode(_currentMode.toggled);
 
+  /// Opens whichever camera the current mode needs.
+  ///
+  /// Called when the vision screen appears. [setMode] handles the handover
+  /// when the mode *changes*, but entering the screen already in OCR mode is
+  /// not a change, so without this the preview would sit on "Preparing
+  /// camera…" indefinitely.
+  Future<void> prepareCameraForMode() async {
+    if (!isUsingPhoneCamera) return;
+
+    if (_currentMode == AppMode.ocr) {
+      if (phoneController != null) return;
+      final opened = await _cameraService.openStillCamera();
+      if (!opened) {
+        _ocrStage = OcrStage.failed;
+        _ocrMessage = 'Could not open the camera for reading.';
+      }
+      notifyListeners();
+    } else {
+      await _cameraService.closeStillCamera();
+    }
+  }
+
+  /// Hands the camera back when the vision screen is dismissed, so the sensor
+  /// is not held open behind an unrelated screen.
+  Future<void> releaseCamera() async {
+    await _cameraService.closeStillCamera();
+  }
+
   /// Gives the framework one frame to actually dispose the outgoing camera
   /// widget, plus a short grace period for the platform view to release the
   /// hardware. Without the second part the handover races on slower Androids.

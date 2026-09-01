@@ -26,7 +26,7 @@
  *   - Non-blocking LED, bounded JSON building, camera/WiFi auto-recovery.
  *
  * Button wiring (one side to GPIO, other side to GND):
- *   Button 1 (GPIO 13) -> Mode Button
+ *   Button 1 (GPIO 13) -> Mode Button (toggles Object Detection <-> Read Text)
  *                         short press = cycle Object Detection -> OCR -> Navigation
  *                         long  press = re-announce the current mode
  *   Button 2 (GPIO 14) -> Action Button
@@ -108,17 +108,19 @@ const uint16_t PORT_BEACON  = 4210;
 const char* FW_VERSION = "3.0.0";
 
 // ============ MODE DEFINITIONS ============
+// Must stay in step with AppMode in lib/models/app_mode.dart: the mode index
+// is what travels over /mode?set=N. A third mode here that the app does not
+// have leaves the two sides one step out of phase after every cycle.
 enum AppMode {
   MODE_OBJECT_DETECTION = 0,
   MODE_OCR              = 1,
-  MODE_NAVIGATION       = 2,
-  MODE_COUNT            = 3
+  MODE_COUNT            = 2
 };
 
 volatile AppMode currentMode = MODE_OBJECT_DETECTION;
 
-const char* modeNames[] = { "object_detection", "ocr", "navigation" };
-const char* modeVoiceFeedback[] = { "Object Detection Mode", "OCR Mode", "Navigation Mode" };
+const char* modeNames[] = { "object_detection", "ocr" };
+const char* modeVoiceFeedback[] = { "Object detection", "Read text" };
 
 // ============ GLOBAL STATE ============
 httpd_handle_t control_httpd = NULL;
@@ -364,10 +366,6 @@ static void fireModeAction() {
       action   = "ocr_request";
       feedback = "Capturing and reading text";
       break;
-    case MODE_NAVIGATION:
-      action   = "navigation_request";
-      feedback = "Navigation mode";
-      break;
     default:
       return;
   }
@@ -550,7 +548,7 @@ static esp_err_t status_handler(httpd_req_t* req) {
   json += "\"version\":\"" + String(FW_VERSION) + "\",";
   json += "\"current_mode\":\"" + String(modeNames[currentMode]) + "\",";
   json += "\"mode_index\":" + String((int)currentMode) + ",";
-  json += "\"available_modes\":[\"object_detection\",\"ocr\",\"navigation\"],";
+  json += "\"available_modes\":[\"object_detection\",\"ocr\"],";
   json += "\"buttons\":{\"button1\":\"mode_button\",\"button2\":\"action_button\"},";
   json += "\"camera_ready\":" + String(cameraReady ? "true" : "false") + ",";
   json += "\"frames_served\":" + String((unsigned)framesServed) + ",";

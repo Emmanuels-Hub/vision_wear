@@ -137,7 +137,10 @@ class SettingsScreen extends StatelessWidget {
                 _SectionHeader(title: 'Accessibility'),
                 SwitchListTile(
                   title: const Text('Haptic feedback'),
-                  subtitle: const Text('Vibrate on critical obstacles'),
+                  subtitle: const Text(
+                    'A short tap to confirm your own actions. Detections never '
+                    'vibrate.',
+                  ),
                   value: settings.enableHaptics,
                   activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {

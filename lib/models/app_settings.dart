@@ -18,7 +18,7 @@ class AppSettings {
     this.speechRate = 0.5,
     this.speechPitch = 1.0,
     this.speechVolume = 1.0,
-    this.enableHaptics = true,
+    this.enableHaptics = false,
     this.enableVoiceCommands = true,
     this.detectionConfidence = 0.55,
     this.frameIntervalMs = AppConstants.frameCaptureIntervalMs,
@@ -55,6 +55,9 @@ class AppSettings {
   final double speechRate;
   final double speechPitch;
   final double speechVolume;
+  /// Off by default. Vibration is only ever a confirmation of something the
+  /// user did — never a detection alert — because a head-mounted camera
+  /// produces far too many detections for a buzz per object to mean anything.
   final bool enableHaptics;
   final bool enableVoiceCommands;
   final double detectionConfidence;

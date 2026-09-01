@@ -188,7 +188,7 @@ class VisionProvider extends ChangeNotifier {
     await _cameraService.connect();
     if (_cameraService.connection.isConnected) {
       _statusMessage = 'Camera connected';
-      await _hapticService.success();
+      await _confirmWithHaptic();
     } else {
       _statusMessage = _cameraService.connection.message;
       await _speechService.speak(
@@ -225,7 +225,7 @@ class VisionProvider extends ChangeNotifier {
       success ? 'Connected' : 'Could not connect',
       priority: SpeechPriority.high,
     );
-    if (success) await _hapticService.success();
+    if (success) await _confirmWithHaptic();
     notifyListeners();
   }
 
@@ -491,7 +491,7 @@ class VisionProvider extends ChangeNotifier {
       _ocrMessage = '';
       notifyListeners();
 
-      await _hapticService.success();
+      await _confirmWithHaptic();
 
       final spoken = cleaned.length > _maxSpokenChars
           ? '${cleaned.substring(0, _maxSpokenChars)}… Text continues on screen.'
@@ -696,18 +696,22 @@ class VisionProvider extends ChangeNotifier {
         settings: _settings,
       ),
     );
-
-    unawaited(_maybeVibrate());
   }
 
-  Future<void> _maybeVibrate() async {
+  // Detections deliberately do NOT vibrate.
+  //
+  // A head-mounted camera sees dozens of transient objects a minute, and any
+  // per-detection buzz — however well rate-limited — becomes a constant hum
+  // that the wearer stops being able to distinguish from anything else. Worse,
+  // it competes for attention with the speech, which is the channel that
+  // actually carries information. Haptics are now reserved for confirming
+  // something the user themselves did, and are off by default.
+
+  /// A single short tap confirming an action the user deliberately took.
+  /// Silent unless the user has switched haptics on.
+  Future<void> _confirmWithHaptic() async {
     if (!_settings.enableHaptics) return;
-    final hasImmediate = _detections.any(
-      (d) => d.isHazard && d.proximity == ProximityLevel.immediate,
-    );
-    // HapticService applies its own cooldown, so calling this every frame is
-    // safe — it buzzes at most once every 1.5 s.
-    if (hasImmediate) await _hapticService.alert(critical: true);
+    await _hapticService.success();
   }
 
   // ── Conversion helpers ─────────────────────────────────────────────────────
@@ -800,24 +804,60 @@ class VisionProvider extends ChangeNotifier {
 
   /// A button press reported by the ESP32.
   ///
-  /// The firmware sends the mode it was in at the moment of the press, so we
-  /// adopt that before acting. Without this the phone and the hardware drift
-  /// apart and the app announces the wrong mode.
+  /// Every event carries the mode the device is in, which is how the phone and
+  /// the hardware stay in agreement.
+  ///
+  /// `mode_changed` is handled separately and deliberately: the firmware
+  /// switches its own mode *first* and then reports the mode it switched **to**.
+  /// Adopting that mode and then also running the generic mode-button handler
+  /// would toggle a second time, leaving the app exactly one step out of phase
+  /// with the glasses — the mode button would appear to do nothing, or the
+  /// wrong thing.
   void _onDeviceButtonEvent(ButtonEvent event) {
-    final reported = event.parsedMode;
-    if (reported != null && reported != _currentMode) {
-      unawaited(setMode(reported));
+    if (event.action == ButtonAction.modeChanged) {
+      _adoptDeviceMode(event.mode);
+      return;
     }
+
+    if (event.mode.isNotEmpty) {
+      final reported = event.parsedMode;
+      if (reported == null) {
+        // A board still running three-mode firmware has landed in
+        // "navigation", which this app no longer has. Resync instead of
+        // drifting, then drop the event — its action is meaningless here.
+        _adoptDeviceMode(event.mode);
+        return;
+      }
+      if (reported != _currentMode) unawaited(setMode(reported));
+    }
+
     handleButtonEvent(event.action);
+  }
+
+  /// Brings the app into whatever mode the device says it is in.
+  void _adoptDeviceMode(String wireName) {
+    final parsed = appModeFromWireName(wireName);
+    if (parsed != null) {
+      unawaited(setMode(parsed));
+      return;
+    }
+
+    // Unknown mode name: older firmware cycling through a third mode. Put both
+    // sides back into object detection rather than leaving them disagreeing.
+    debugPrint('[Vision] device reported unknown mode "$wireName"; resyncing');
+    unawaited(setMode(AppMode.objectDetection));
+    unawaited(_cameraService.setDeviceMode(AppMode.objectDetection));
   }
 
   /// Handles a button action by name. Shared by the hardware buttons and the
   /// on-screen ones that mirror them.
   void handleButtonEvent(String action) {
     switch (action) {
+      // Only the on-screen mode control reaches this. Device-initiated mode
+      // changes are handled in _onDeviceButtonEvent, which adopts rather than
+      // toggles.
       case ButtonAction.modeButton:
       case 'mode_button':
-      case ButtonAction.modeChanged:
         unawaited(toggleMode());
 
       case ButtonAction.actionButton:

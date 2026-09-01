@@ -144,8 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 4),
                             Text(
                               'Action: ${vision.currentMode.actionDescription}',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: context.appColors.muted),
+                              
                             ),
                           ],
                         ),

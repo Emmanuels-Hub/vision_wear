@@ -54,7 +54,7 @@ class AccessibleButton extends StatelessWidget {
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 32, color: foreground),
+                  Icon(icon, size: 32,),
                   const SizedBox(width: 16),
                 ],
                 Expanded(
@@ -66,7 +66,7 @@ class AccessibleButton extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          color: foreground,
+                          
                         ),
                       ),
                       if (subtitle != null) ...[
@@ -75,14 +75,13 @@ class AccessibleButton extends StatelessWidget {
                           subtitle!,
                           style: TextStyle(
                             fontSize: 14,
-                            color: foreground.withValues(alpha: 0.75),
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, color: foreground.withValues(alpha: 0.7)),
+                Icon(Icons.chevron_right, ),
               ],
             ),
           ),

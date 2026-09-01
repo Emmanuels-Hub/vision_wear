@@ -87,7 +87,6 @@ class SettingsScreen extends StatelessWidget {
                     'Ignores objects off to the far left and right',
                   ),
                   value: settings.announceOnlyCenter,
-                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setAnnounceOnlyCenter(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -127,7 +126,6 @@ class SettingsScreen extends StatelessWidget {
                     'Off: only hazards and nearby obstacles',
                   ),
                   value: settings.announceAllObjects,
-                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setAnnounceAllObjects(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -142,7 +140,6 @@ class SettingsScreen extends StatelessWidget {
                     'vibrate.',
                   ),
                   value: settings.enableHaptics,
-                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setEnableHaptics(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -152,7 +149,6 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Voice commands'),
                   subtitle: const Text('Control app with your voice'),
                   value: settings.enableVoiceCommands,
-                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setEnableVoiceCommands(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -164,7 +160,6 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Use phone camera'),
                   subtitle: const Text('Fallback when ESP32 is unavailable'),
                   value: settings.usePhoneCamera,
-                  activeThumbColor: context.appColors.accent,
                   onChanged: (v) async {
                     await settingsProvider.setUsePhoneCamera(v);
                     vision.updateSettings(settingsProvider.settings);
@@ -362,7 +357,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: context.appColors.accent,
+              color: context.appColors.brand,
             ),
       ),
     );

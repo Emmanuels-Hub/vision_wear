@@ -174,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         label: 'Scan Obstacles',
                         subtitle: 'Check for hazards on your path',
                         icon: Icons.warning_amber,
-                        color: context.appColors.warning.withValues(alpha: 0.3),
+                        color: context.appColors.warning,
                         onPressed: vision.scanObstacles,
                       ),
                       AccessibleButton(

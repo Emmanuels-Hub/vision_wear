@@ -198,9 +198,14 @@ class _HelpSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: context.appColors.accent),
+                Icon(icon, color: context.appColors.brand),
                 const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -224,7 +229,14 @@ class _HelpStep extends StatelessWidget {
       leading: CircleAvatar(
         radius: 14,
         backgroundColor: context.colors.primary,
-        child: Text('$number', style: const TextStyle(fontSize: 12)),
+        child: Text(
+          '$number',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: context.colors.onPrimary,
+          ),
+        ),
       ),
       title: Text(text),
       dense: true,

@@ -90,7 +90,7 @@ class ConnectionStatusBanner extends StatelessWidget {
         final source = connection.source == CameraSource.esp32
             ? 'ESP32-CAM'
             : 'Phone camera';
-        return (context.appColors.accent, Icons.wifi, 'Connected · $source');
+        return (context.appColors.success, Icons.wifi, 'Connected · $source');
       case ConnectionStatus.discovering:
         return (context.appColors.warning, Icons.search, 'Finding camera...');
       case ConnectionStatus.connecting:

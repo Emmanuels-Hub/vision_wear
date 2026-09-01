@@ -76,13 +76,13 @@ class _SplashScreenState extends State<SplashScreen>
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: context.colors.primary.withValues(alpha: 0.15),
+                  color: context.appColors.brand.withValues(alpha: 0.16),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.visibility,
                   size: 72,
-                  color: context.colors.primary,
+                  color: context.appColors.brand,
                 ),
               ),
               const SizedBox(height: 32),

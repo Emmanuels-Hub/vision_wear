@@ -11,13 +11,15 @@ class DetectionOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Use SizedBox.expand so the CustomPaint fills the parent Stack cell.
+    // Fixed vivid colours, not theme-resolved: these paint on live video, so
+    // they must stay readable regardless of which app theme is active.
     return SizedBox.expand(
       child: CustomPaint(
         painter: _DetectionPainter(
           detections: detections,
-          immediateColor: context.appColors.danger,
-          hazardColor: context.appColors.warning,
-          neutralColor: context.appColors.accent,
+          immediateColor: AppTheme.visionDanger,
+          hazardColor: AppTheme.visionHazard,
+          neutralColor: AppTheme.visionSafe,
           labelTextColor: context.appColors.onOverlay,
         ),
       ),

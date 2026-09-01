@@ -171,7 +171,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     title: const Text('Use phone camera instead'),
                     subtitle: const Text('For testing without ESP32 hardware'),
                     value: _usePhoneCamera,
-                    activeThumbColor: context.appColors.accent,
                     onChanged: (v) => setState(() => _usePhoneCamera = v),
                   ),
 
@@ -183,7 +182,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         'Listens for the device instead of using a fixed IP',
                       ),
                       value: _autoDiscover,
-                      activeThumbColor: context.appColors.accent,
                       onChanged: (v) => setState(() => _autoDiscover = v),
                     ),
                     const SizedBox(height: 8),
@@ -227,6 +225,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     label: const Text('Test Connection'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: context.colors.surfaceContainerHighest,
+                      foregroundColor: context.colors.onSurface,
                       minimumSize: const Size(double.infinity, 56),
                     ),
                   ),

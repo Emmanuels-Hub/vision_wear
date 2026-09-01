@@ -18,32 +18,42 @@ class AccessibleButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final IconData? icon;
   final String? subtitle;
+
+  /// An optional accent for a button that needs to stand out from its
+  /// neighbours (e.g. the obstacle scan). Used to tint the icon and a left
+  /// edge, not to flood the whole fill — a wall of differently-coloured
+  /// blocks is harder to scan than a uniform list with one marked item.
   final Color? color;
   final String? semanticHint;
   final bool isPrimary;
 
   @override
   Widget build(BuildContext context) {
-    final buttonColor = color ??
-        (isPrimary
-            ? context.colors.primary
-            : context.colors.surfaceContainerHighest);
+    final cs = context.colors;
 
-    // Derive the foreground from the actual fill so the label stays legible in
-    // both themes and against a caller-supplied colour. The two candidates come
-    // from the scheme rather than being literal black and white, so a themed
-    // surface still gets a themed label.
-    final foreground =
-        ThemeData.estimateBrightnessForColor(buttonColor) == Brightness.dark
-            ? context.colors.onInverseSurface
-            : context.colors.onSurface;
+    final Color fill;
+    final Color foreground;
+    final Color iconColor;
+    if (isPrimary) {
+      fill = cs.primary;
+      foreground = cs.onPrimary;
+      iconColor = cs.onPrimary;
+    } else {
+      fill = cs.surfaceContainerHighest;
+      foreground = cs.onSurface;
+      iconColor = color ?? context.appColors.accent;
+    }
+
+    final borderColor = isPrimary
+        ? Colors.transparent
+        : (color?.withValues(alpha: 0.55) ?? cs.outlineVariant);
 
     return Semantics(
       button: true,
       label: label,
       hint: semanticHint ?? subtitle,
       child: Material(
-        color: buttonColor,
+        color: fill,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: onPressed,
@@ -51,10 +61,17 @@ class AccessibleButton extends StatelessWidget {
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor,
+                width: isPrimary ? 0 : 1.5,
+              ),
+            ),
             child: Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, size: 32,),
+                  Icon(icon, size: 32, color: iconColor),
                   const SizedBox(width: 16),
                 ],
                 Expanded(
@@ -66,7 +83,7 @@ class AccessibleButton extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
-                          
+                          color: foreground,
                         ),
                       ),
                       if (subtitle != null) ...[
@@ -75,13 +92,17 @@ class AccessibleButton extends StatelessWidget {
                           subtitle!,
                           style: TextStyle(
                             fontSize: 14,
+                            color: foreground.withValues(alpha: 0.75),
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right, ),
+                Icon(
+                  Icons.chevron_right,
+                  color: foreground.withValues(alpha: 0.55),
+                ),
               ],
             ),
           ),

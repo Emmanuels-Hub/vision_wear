@@ -211,7 +211,7 @@ class _ModelStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color =
-        isModelReady ? context.appColors.accent : context.appColors.warning;
+        isModelReady ? context.appColors.success : context.appColors.warning;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -676,7 +676,7 @@ class _StatusRow extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color:
-                active ? context.appColors.accent : context.appColors.warning,
+                active ? context.appColors.success : context.appColors.warning,
           ),
         ),
         const SizedBox(width: 8),
@@ -833,13 +833,10 @@ class _Panel extends StatelessWidget {
   }
 }
 
-/// The two buttons at the bottom of the screen: the action for the current
-/// mode, and the mode switch.
-///
-/// The mode button sets both `backgroundColor` and `foregroundColor`. Setting
-/// only the background leaves the label at the M3 default of
-/// `colorScheme.primary` — the same blue as the fill — which is what made the
-/// label invisible.
+/// The two buttons at the bottom of the screen: the filled action for the
+/// current mode on the left, and an outlined mode switch on the right. The
+/// filled/outlined split keeps the primary action obvious when both buttons
+/// would otherwise be the same blue.
 class _ActionRow extends StatelessWidget {
   const _ActionRow({required this.vision});
   final VisionProvider vision;
@@ -857,8 +854,8 @@ class _ActionRow extends StatelessWidget {
                   icon: const Icon(Icons.document_scanner),
                   label: const Text('Read Text'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: context.appColors.accent,
-                    foregroundColor: context.appColors.onAccent,
+                    backgroundColor: context.colors.primary,
+                    foregroundColor: context.colors.onPrimary,
                     minimumSize: const Size(0, 56),
                   ),
                 )
@@ -878,16 +875,14 @@ class _ActionRow extends StatelessWidget {
           child: Semantics(
             button: true,
             label: 'Switch to ${vision.currentMode.toggled.displayName}',
-            child: ElevatedButton.icon(
+            child: OutlinedButton.icon(
               onPressed: vision.toggleMode,
               icon: const Icon(Icons.swap_horiz),
               label: Text(
                 isOcr ? 'Detect' : 'Read Text',
                 overflow: TextOverflow.ellipsis,
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.colors.primary,
-                foregroundColor: context.colors.onPrimary,
+              style: OutlinedButton.styleFrom(
                 minimumSize: const Size(0, 56),
               ),
             ),

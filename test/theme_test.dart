@@ -50,12 +50,22 @@ void main() {
         );
       });
 
+      test('$name: primary is the action colour, blue not gold', () {
+        // The redesign moved the workhorse fill from gold to blue. Gold could
+        // not hold contrast as a fill on the light surface without turning
+        // brown, and it read as decoration rather than "activate me".
+        expect(HSLColor.fromColor(scheme.primary).hue,
+            inInclusiveRange(200, 250));
+      });
+
       test('$name: semantic fills carry a readable label', () {
         expect(_contrast(app.onAccent, app.accent),
             greaterThanOrEqualTo(largeTextMinimum));
         expect(_contrast(app.onWarning, app.warning),
             greaterThanOrEqualTo(largeTextMinimum));
         expect(_contrast(app.onDanger, app.danger),
+            greaterThanOrEqualTo(largeTextMinimum));
+        expect(_contrast(scheme.onSecondary, scheme.secondary),
             greaterThanOrEqualTo(largeTextMinimum));
       });
 
@@ -89,14 +99,21 @@ void main() {
             greaterThanOrEqualTo(bodyMinimum));
       });
 
-      test('$name: warning is distinguishable from the gold primary', () {
-        // Amber warnings used to sit almost on top of the brand gold, which
-        // made a caution state read as an ordinary one.
-        expect(
-          _contrast(app.warning, scheme.primary),
-          greaterThan(1.8),
-          reason: 'warning must not be mistakable for the brand colour',
-        );
+      test('$name: status colours are mutually distinguishable', () {
+        // A caution state that reads as an immediate hazard (or the reverse)
+        // is a safety bug for this user. Warm status colours cluster in hue,
+        // so check they stay far enough apart on the wheel.
+        double hueGap(Color a, Color b) {
+          final d = (HSLColor.fromColor(a).hue - HSLColor.fromColor(b).hue).abs();
+          return d > 180 ? 360 - d : d;
+        }
+
+        expect(hueGap(app.warning, app.danger), greaterThan(18),
+            reason: 'warning must not be mistakable for danger');
+        expect(hueGap(app.warning, app.success), greaterThan(18));
+        expect(hueGap(app.danger, app.success), greaterThan(18));
+        // Blue primary vs the amber warning: unmistakable by hue.
+        expect(hueGap(app.warning, scheme.primary), greaterThan(90));
       });
     }
   });

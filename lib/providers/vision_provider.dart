@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -48,10 +49,8 @@ class VisionProvider extends ChangeNotifier {
         _ocrService = ocrService {
     _scheduler = SpeechScheduler(speechService: _speechService);
 
-    _connectionSub = _cameraService.connectionStream.listen((info) {
-      _connection = info;
-      notifyListeners();
-    });
+    _connectionSub =
+        _cameraService.connectionStream.listen(_onConnectionInfo);
     _frameSub = _cameraService.frameStream.listen(_onEsp32Frame);
     _buttonEventSub =
         _cameraService.buttonEventStream.listen(_onDeviceButtonEvent);
@@ -97,7 +96,18 @@ class VisionProvider extends ChangeNotifier {
   CameraConnectionInfo _connection = const CameraConnectionInfo();
   List<DetectedObject> _detections = [];
   List<ObstacleAlert> _alerts = [];
-  Uint8List? _currentFrame; // ESP32 only
+  Uint8List? _currentFrame; // ESP32 only, kept as raw bytes for OCR capture
+
+  /// Decoded ESP32 preview frame.
+  ///
+  /// Driven straight off the socket and exposed as a [ValueNotifier] so the
+  /// video updates independently of [notifyListeners] — the preview is never
+  /// gated behind a full-screen rebuild, and frames never pass through
+  /// Flutter's [ImageCache], which a per-frame MJPEG feed otherwise thrashes
+  /// (every frame is a unique key: a full decode + eviction, every frame).
+  final ValueNotifier<ui.Image?> esp32Frame = ValueNotifier<ui.Image?>(null);
+  Uint8List? _decodeQueued;
+  bool _decoding = false;
   bool _isVisionActive = false;
   bool _isProcessing = false; // ESP32 only
   String _statusMessage = 'Ready';
@@ -204,6 +214,7 @@ class VisionProvider extends ChangeNotifier {
     await _cameraService.closeStillCamera();
     await _cameraService.disconnect();
     _currentFrame = null;
+    _clearEsp32Frame();
     _detections = [];
     _alerts = [];
     _statusMessage = 'Disconnected';
@@ -620,7 +631,7 @@ class VisionProvider extends ChangeNotifier {
     if (isUsingPhoneCamera) return;
 
     _currentFrame = frame;
-    _throttledNotify();
+    _enqueueFrameDecode(frame);
 
     if (!_isVisionActive || _esp32Processing) return;
     if (_currentMode != AppMode.objectDetection) return;
@@ -663,6 +674,78 @@ class VisionProvider extends ChangeNotifier {
       _esp32Processing = false;
       _isProcessing = false;
       _throttledNotify();
+    }
+  }
+
+  // ── ESP32 preview decode ──────────────────────────────────────────────────
+  //
+  // Decode the JPEG once here, hand the [ui.Image] to a RawImage widget, and
+  // dispose the previous one. This bypasses ImageProvider / ImageCache
+  // entirely, so memory stays flat instead of the cache filling with
+  // one-shot frames and thrashing evictions.
+
+  /// Keeps only the newest frame: if a decode is already running, later frames
+  /// overwrite the queued one rather than piling up behind it.
+  void _enqueueFrameDecode(Uint8List bytes) {
+    _decodeQueued = bytes;
+    if (_decoding) return;
+    _decoding = true;
+    unawaited(_drainFrameDecodeQueue());
+  }
+
+  Future<void> _drainFrameDecodeQueue() async {
+    while (_decodeQueued != null) {
+      final bytes = _decodeQueued!;
+      _decodeQueued = null;
+      try {
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        codec.dispose();
+
+        final previous = esp32Frame.value;
+        esp32Frame.value = frame.image;
+        if (previous != null) {
+          // Dispose after the frame that may still be painting it has been
+          // replaced. RawImage clones internally, so this handle is ours.
+          SchedulerBinding.instance
+              .addPostFrameCallback((_) => previous.dispose());
+        }
+      } catch (e) {
+        debugPrint('[Vision] preview frame decode failed: $e');
+      }
+    }
+    _decoding = false;
+  }
+
+  void _clearEsp32Frame() {
+    final image = esp32Frame.value;
+    esp32Frame.value = null;
+    image?.dispose();
+  }
+
+  /// Coalesces the connection stream. Status / message / transport changes must
+  /// paint at once; a pure fps / frame-count tick arrives on every single frame
+  /// and is throttled to ~2 Hz so the preview is not gated behind a
+  /// full-screen rebuild.
+  DateTime? _lastConnectionNotify;
+
+  void _onConnectionInfo(CameraConnectionInfo info) {
+    final previous = _connection;
+    _connection = info;
+
+    final structural = info.status != previous.status ||
+        info.message != previous.message ||
+        info.transport != previous.transport ||
+        info.source != previous.source ||
+        info.deviceMode != previous.deviceMode ||
+        info.deviceIp != previous.deviceIp;
+
+    final now = DateTime.now();
+    if (structural ||
+        _lastConnectionNotify == null ||
+        now.difference(_lastConnectionNotify!).inMilliseconds >= 500) {
+      _lastConnectionNotify = now;
+      notifyListeners();
     }
   }
 
@@ -909,6 +992,8 @@ class VisionProvider extends ChangeNotifier {
     _connectionSub.cancel();
     _frameSub.cancel();
     _buttonEventSub.cancel();
+    _clearEsp32Frame();
+    esp32Frame.dispose();
     _ocrService.dispose();
     unawaited(_speechService.dispose());
     super.dispose();

@@ -61,6 +61,32 @@
 #include <esp_wifi.h>
 #include "esp_http_server.h"
 #include "esp_timer.h"
+#include "lwip/sockets.h"   // setsockopt / TCP_NODELAY
+
+// ============ PERFORMANCE / DEMO TUNING ============
+// Read the block comment above each one before changing it.
+
+// AP_ONLY: serve only our own access point; do NOT also join a home network.
+//   AP+STA is a single radio shared between two roles. Every station scan or
+//   reconnect attempt freezes the softAP - and therefore the phone's video
+//   stream - for 1-2 seconds, and if saved credentials point at a network that
+//   is not present (old test creds in NVS), serviceWifi() retries that on a
+//   loop forever. That periodic multi-second stall is the "ESP32 lags" symptom.
+//   On-device YOLO and OCR need no internet, so keep this at 1 for a demo.
+//   Set to 0 only if a cloud feature genuinely needs the phone kept online.
+#define AP_ONLY            1
+
+// WiFi TX power, in 0.25 dBm units. 78 = 19.5 dBm (max). Max TX draws the
+// biggest current spikes, and on a marginal 5V supply those spikes brown the
+// board out mid-frame -> camera wedges -> recoverCamera() -> multi-100ms stall.
+// 60 (15 dBm) is plenty for a room and much easier on the supply. Raise it only
+// with a known-good 5V/2A source and a bulk cap on the 5V rail.
+#define WIFI_TX_POWER      60
+
+// Extra camera frame buffer. With grab_mode LATEST the encoder and the network
+// sender ping-pong between buffers; a third one keeps the encoder from stalling
+// while a slow client drains the previous frame. PSRAM only.
+#define CAM_FB_COUNT       3
 
 // ============ CAMERA PINS (AI-Thinker ESP32-CAM) ============
 #define PWDN_GPIO_NUM     32
@@ -250,7 +276,7 @@ bool initCamera() {
   if (psramFound()) {
     config.frame_size   = FRAMESIZE_VGA;      // 640x480, matches the app's model input
     config.jpeg_quality = 12;
-    config.fb_count     = 2;
+    config.fb_count     = CAM_FB_COUNT;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
   } else {
     // Without PSRAM a double-buffered VGA frame will not fit. Degrade instead
@@ -278,9 +304,15 @@ bool initCamera() {
     s->set_awb_gain(s, 1);
     s->set_exposure_ctrl(s, 1);
     s->set_gain_ctrl(s, 1);
-    // Wearable enclosures often mount the sensor upside down. Flip here rather
-    // than rotating on the phone, which would cost a full frame copy.
-    s->set_vflip(s, 0);
+    // This wearable's sensor is mounted vertically inverted, so flip the image
+    // on the sensor rather than rotating on the phone — a phone-side rotation
+    // costs a full frame copy and would leave the detection boxes (drawn from
+    // the raw frame) misaligned.
+    //   vflip  = 1 : corrects the upside-down mount.
+    //   hmirror = 0 : must stay 0, or text comes through mirror-reversed.
+    // For an upright mount, set vflip back to 0. Only enable hmirror if a unit
+    // is physically rotated a full 180° (needs both = 1).
+    s->set_vflip(s, 1);
     s->set_hmirror(s, 0);
   }
 
@@ -472,8 +504,12 @@ static esp_err_t capture_handler(httpd_req_t* req) {
 }
 
 static const char* STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=visionwearframe";
-static const char* STREAM_BOUNDARY     = "\r\n--visionwearframe\r\n";
-static const char* STREAM_PART_FMT     = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %u\r\n\r\n";
+// Boundary + part header in one format string so the whole preamble goes out as
+// a single write. Sent as three separate small chunks it used to sit behind
+// Nagle's algorithm, adding 40-200 ms of latency to every frame.
+static const char* STREAM_HEAD_FMT =
+    "\r\n--visionwearframe\r\n"
+    "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %u\r\n\r\n";
 
 static esp_err_t stream_handler(httpd_req_t* req) {
   esp_err_t res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
@@ -486,7 +522,15 @@ static esp_err_t stream_handler(httpd_req_t* req) {
   streamClients++;
   Serial.printf("Stream client connected (%u active)\n", (unsigned)streamClients);
 
-  char partBuf[128];
+  // Turn Nagle off for this client too (open_fn covers new sockets, but a
+  // keep-alive socket promoted from the control path may predate it).
+  int sockfd = httpd_req_to_sockfd(req);
+  if (sockfd >= 0) {
+    int one = 1;
+    setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+  }
+
+  char headBuf[160];
 
   while (true) {
     if (!cameraReady) {
@@ -505,12 +549,9 @@ static esp_err_t stream_handler(httpd_req_t* req) {
       continue;
     }
 
-    res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-    if (res == ESP_OK) {
-      size_t hlen = snprintf(partBuf, sizeof(partBuf), STREAM_PART_FMT,
-                             (unsigned)fb->len, (unsigned)millis());
-      res = httpd_resp_send_chunk(req, partBuf, hlen);
-    }
+    int hlen = snprintf(headBuf, sizeof(headBuf), STREAM_HEAD_FMT,
+                        (unsigned)fb->len, (unsigned)millis());
+    res = httpd_resp_send_chunk(req, headBuf, hlen);
     if (res == ESP_OK) {
       res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
     }
@@ -684,6 +725,13 @@ static esp_err_t wifi_handler(httpd_req_t* req) {
   httpd_resp_set_type(req, "application/json");
   setCorsHeaders(req);
 
+#if AP_ONLY
+  const char* apOnly =
+    "{\"ok\":false,\"error\":\"this build is access-point only; reflash with "
+    "AP_ONLY 0 to join a network\"}";
+  return httpd_resp_send(req, apOnly, strlen(apOnly));
+#endif
+
   if (strlen(ssid) == 0) {
     const char* err = "{\"ok\":false,\"error\":\"ssid required\"}";
     return httpd_resp_send(req, err, strlen(err));
@@ -756,10 +804,22 @@ static esp_err_t index_handler(httpd_req_t* req) {
 // Three instances, because esp_http_server serves requests sequentially within
 // an instance. Keeping /stream and the long-polled /events on their own
 // instances means neither can block /capture or /status.
+// esp_http_server leaves TCP_NODELAY off. Every endpoint here sends small
+// pieces (a boundary, a header, a short JSON body) that then wait on Nagle for
+// the previous packet's ACK - tens to a couple hundred ms each. Clearing it on
+// every accepted socket removes that delay across /capture, /status and the
+// MJPEG stream alike.
+static esp_err_t sockOnOpen(httpd_handle_t hd, int sockfd) {
+  int one = 1;
+  setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+  return ESP_OK;
+}
+
 static httpd_config_t baseConfig(uint16_t port, uint16_t sockets, uint16_t stack) {
   httpd_config_t config      = HTTPD_DEFAULT_CONFIG();
   config.server_port         = port;
   config.ctrl_port           = 32768 + port;   // must be unique per instance
+  config.open_fn             = sockOnOpen;
   config.max_uri_handlers    = 12;
   config.max_open_sockets    = sockets;
   config.stack_size          = stack;
@@ -838,8 +898,20 @@ void setupWifi() {
   staPass = prefs.getString("sta_pass", "");
   prefs.end();
 
+#if AP_ONLY
+  // Ignore any saved station credentials. With them non-empty, serviceWifi()
+  // and the beacon would still try to drive a station link that this build
+  // never brings up.
+  staSsid = "";
+  staPass = "";
+#endif
+
   WiFi.persistent(false);
-  WiFi.mode(WIFI_AP_STA);          // serve our own AP *and* join a network
+#if AP_ONLY
+  WiFi.mode(WIFI_AP);             // one radio, one job: no AP/STA time-slicing
+#else
+  WiFi.mode(WIFI_AP_STA);        // serve our own AP *and* join a network
+#endif
   WiFi.setSleep(false);            // the single biggest latency fix: modem
                                    // sleep was adding 100-200 ms per response
   WiFi.setAutoReconnect(true);
@@ -856,8 +928,9 @@ void setupWifi() {
     Serial.println("No saved home network. The app can send one to /wifi?ssid=..&pass=..");
   }
 
-  // Raise TX power for a more stable link through a jacket pocket.
-  esp_wifi_set_max_tx_power(78);
+  // See WIFI_TX_POWER note: max power buys range at the cost of current spikes
+  // that brown out a weak supply mid-frame.
+  esp_wifi_set_max_tx_power(WIFI_TX_POWER);
 
   beaconUdp.begin(PORT_BEACON);
 }

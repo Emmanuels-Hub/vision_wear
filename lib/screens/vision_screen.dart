@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -461,30 +463,42 @@ class _PhoneStillPreview extends StatelessWidget {
   }
 }
 
-/// JPEG frames polled from the ESP32-CAM.
+/// Frames streamed from the ESP32-CAM.
+///
+/// The provider decodes each JPEG to a [ui.Image] once and publishes it on a
+/// [ValueNotifier]; a [RawImage] inside a [RepaintBoundary] paints it. This
+/// keeps the video off the `notifyListeners` path (so it is not capped at the
+/// UI-update throttle) and out of Flutter's `ImageCache` (which a per-frame
+/// feed thrashes). The old `Image.memory(bytes)` did both.
 class _Esp32Frame extends StatelessWidget {
   const _Esp32Frame({required this.vision});
   final VisionProvider vision;
 
   @override
   Widget build(BuildContext context) {
-    final frame = vision.currentFrame;
-    if (frame == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: context.appColors.accent),
-            const SizedBox(height: 12),
-            Text(
-              'Waiting for frames…',
-              style: TextStyle(color: context.appColors.onOverlay),
-            ),
-          ],
-        ),
-      );
-    }
-    return Image.memory(frame, fit: BoxFit.cover, gaplessPlayback: true);
+    return RepaintBoundary(
+      child: ValueListenableBuilder<ui.Image?>(
+        valueListenable: vision.esp32Frame,
+        builder: (context, image, _) {
+          if (image == null) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: context.appColors.accent),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Waiting for frames…',
+                    style: TextStyle(color: context.appColors.onOverlay),
+                  ),
+                ],
+              ),
+            );
+          }
+          return RawImage(image: image, fit: BoxFit.cover);
+        },
+      ),
+    );
   }
 }
 
